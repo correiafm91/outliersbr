@@ -1,40 +1,131 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { motion } from 'framer-motion';
-import { Upload, Link as LinkIcon, Save, CheckCircle } from 'lucide-react';
+import { Upload, Link as LinkIcon, Save, CheckCircle, Camera, Trash } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-const ProfileForm: React.FC = () => {
+interface ProfileFormProps {
+  initialData?: {
+    username?: string;
+    bio?: string;
+    industry?: string;
+    avatar_url?: string;
+    linkedin_url?: string;
+    website_url?: string;
+    is_public?: boolean;
+  };
+  onSuccess?: () => void;
+}
+
+const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [username, setUsername] = useState('');
-  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [username, setUsername] = useState(initialData?.username || '');
+  const [bio, setBio] = useState(initialData?.bio || '');
+  const [industry, setIndustry] = useState(initialData?.industry || '');
+  const [linkedin, setLinkedin] = useState(initialData?.linkedin_url || '');
+  const [website, setWebsite] = useState(initialData?.website_url || '');
+  const [isPublic, setIsPublic] = useState(initialData?.is_public !== false);
+  const [avatar, setAvatar] = useState<string | null>(initialData?.avatar_url || null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const isVerified = username.toLowerCase() === 'outliersofc';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!username.trim()) {
+      toast.error('Nome de usuário é obrigatório');
+      return;
+    }
+    
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      let avatarUrl = avatar;
+      
+      // If there's a new image to upload
+      if (uploadPreview && user) {
+        const file = await (await fetch(uploadPreview)).blob();
+        const fileExt = 'jpg';
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+        
+        // Upload the image
+        const { error: uploadError, data } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, { upsert: true });
+          
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+          
+        avatarUrl = publicUrl;
+      }
+      
+      // Update profile in database
+      const { error } = await supabase.from('profiles').upsert({
+        id: user?.id,
+        username,
+        bio,
+        industry,
+        linkedin_url: linkedin,
+        website_url: website,
+        avatar_url: avatarUrl,
+        is_public: isPublic,
+        updated_at: new Date().toISOString(),
+      });
+      
+      if (error) throw error;
+      
+      toast.success('Perfil atualizado com sucesso!');
+      setAvatar(avatarUrl);
+      setUploadPreview(null);
+      
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error: any) {
+      toast.error('Erro ao atualizar perfil', {
+        description: error.message,
+      });
+    } finally {
       setIsLoading(false);
-      console.log('Profile updated');
-    }, 1500);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('A imagem deve ter no máximo 5MB');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
-          setProfileImage(e.target.result as string);
+          setUploadPreview(e.target.result as string);
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setUploadPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -43,26 +134,27 @@ const ProfileForm: React.FC = () => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="w-full max-w-md mx-auto"
+      className="w-full"
     >
-      <div className="glass-panel p-6">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold">Complete Your Profile</h1>
-          <p className="text-muted-foreground">Add your details to get started</p>
-        </div>
-
+      <div className="glass-panel p-6 bg-card border border-border rounded-lg shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex flex-col items-center justify-center space-y-4">
             <div className="relative">
-              <div className="h-24 w-24 rounded-full overflow-hidden bg-secondary flex items-center justify-center">
-                {profileImage ? (
+              <div className="h-24 w-24 rounded-full overflow-hidden bg-secondary flex items-center justify-center shadow-md border border-border">
+                {uploadPreview ? (
                   <img 
-                    src={profileImage} 
-                    alt="Profile preview" 
+                    src={uploadPreview} 
+                    alt="Pré-visualização do perfil" 
+                    className="h-full w-full object-cover"
+                  />
+                ) : avatar ? (
+                  <img 
+                    src={avatar} 
+                    alt="Foto de perfil" 
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <Upload className="h-8 w-8 text-muted-foreground" />
+                  <Camera className="h-8 w-8 text-muted-foreground" />
                 )}
               </div>
               <Button 
@@ -70,11 +162,12 @@ const ProfileForm: React.FC = () => {
                 size="sm" 
                 variant="secondary" 
                 className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
-                onClick={() => document.getElementById('profile-image')?.click()}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
               </Button>
               <input 
+                ref={fileInputRef}
                 id="profile-image" 
                 type="file" 
                 className="hidden" 
@@ -82,18 +175,30 @@ const ProfileForm: React.FC = () => {
                 accept="image/*"
               />
             </div>
-            <span className="text-sm text-muted-foreground">Upload a profile photo</span>
+            {uploadPreview && (
+              <Button 
+                type="button" 
+                variant="destructive" 
+                size="sm"
+                onClick={removeImage}
+                className="text-xs flex items-center gap-1"
+              >
+                <Trash className="h-3 w-3" /> Remover
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">Selecione uma foto de perfil</span>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+            <Label htmlFor="username" className="text-foreground">Nome de Usuário</Label>
             <div className="relative">
               <Input
                 id="username"
-                placeholder="Choose a unique username"
+                placeholder="Escolha um nome de usuário único"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
+                className="bg-background text-foreground border-input"
               />
               {isVerified && (
                 <CheckCircle className="absolute right-3 top-3 h-4 w-4 text-primary" />
@@ -101,60 +206,91 @@ const ProfileForm: React.FC = () => {
             </div>
             {isVerified && (
               <p className="text-xs text-primary">
-                Official Outliers account
+                Conta oficial Outliers
               </p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
+            <Label htmlFor="bio" className="text-foreground">Biografia</Label>
             <Textarea
               id="bio"
-              placeholder="Tell others about yourself or your business"
+              placeholder="Conte um pouco sobre você ou sua empresa"
               disabled={isLoading}
-              className="resize-none min-h-[100px]"
+              className="resize-none min-h-[100px] bg-background text-foreground border-input"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="industry">Industry</Label>
+            <Label htmlFor="industry" className="text-foreground">Área de Atuação</Label>
             <Input
               id="industry"
-              placeholder="e.g., Technology, Marketing, Finance"
+              placeholder="Ex: Tecnologia, Marketing, Finanças"
               disabled={isLoading}
+              className="bg-background text-foreground border-input"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Social Media</Label>
+            <Label className="text-foreground">Redes Sociais</Label>
             <div className="relative">
               <LinkIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="LinkedIn Profile URL"
+                placeholder="URL do LinkedIn"
                 disabled={isLoading}
-                className="pl-10"
+                className="pl-10 bg-background text-foreground border-input"
+                value={linkedin}
+                onChange={(e) => setLinkedin(e.target.value)}
               />
             </div>
             <div className="relative">
               <LinkIcon className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Website URL"
+                placeholder="URL do Website"
                 disabled={isLoading}
-                className="pl-10"
+                className="pl-10 bg-background text-foreground border-input"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
               />
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <div className="space-y-2">
+            <Label className="text-foreground flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                checked={isPublic} 
+                onChange={() => setIsPublic(!isPublic)}
+                className="w-4 h-4"
+              />
+              <span>Perfil Público</span>
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {isPublic ? "Seu perfil pode ser visto por todos" : "Seu perfil só pode ser visto pelas suas conexões"}
+            </p>
+          </div>
+
+          <Button 
+            type="submit" 
+            className={cn(
+              "w-full bg-primary text-primary-foreground hover:bg-primary/90",
+              isLoading && "opacity-70 cursor-not-allowed"
+            )} 
+            disabled={isLoading}
+          >
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                <span>Saving...</span>
+                <span>Salvando...</span>
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <Save className="h-4 w-4" />
-                <span>Save Profile</span>
+                <span>Salvar Perfil</span>
               </div>
             )}
           </Button>

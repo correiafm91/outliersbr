@@ -1,108 +1,127 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 220 14% 96%;
-    --foreground: 222 47% 11%;
+:root {
+  --background: 0 0% 98%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+  --radius: 0.5rem;
+}
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-
-    --primary: 222 47% 11%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 220 13% 91%;
-    --secondary-foreground: 222 47% 11%;
-
-    --muted: 220 13% 91%;
-    --muted-foreground: 215 16% 47%;
-
-    --accent: 220 13% 91%;
-    --accent-foreground: 222 47% 11%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 222 84% 5%;
-
-    --radius: 0.75rem;
-  }
-
-  .dark {
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
-
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
-
-    --secondary: 217 33% 18%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 217 33% 18%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 213 27% 84%;
-  }
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 224.3 76.3% 48%;
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-medium tracking-tight text-primary;
-  }
-
-  p {
-    @apply leading-relaxed text-primary;
-  }
-}
-
-@layer components {
-  .glass-panel {
-    @apply bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg;
+    @apply bg-background font-sans text-foreground antialiased;
   }
   
-  .button-effect {
-    @apply hover:scale-[0.98] active:scale-[0.97] transition-all;
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-foreground font-bold;
   }
+  
+  p, span, div {
+    @apply text-foreground;
+  }
+  
+  a {
+    @apply text-primary;
+  }
+}
 
+@layer utilities {
   .page-container {
-    @apply max-w-screen-xl mx-auto px-4 py-6;
+    @apply container max-w-4xl mx-auto pt-2 pb-6;
   }
+  
+  .glass-panel {
+    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 rounded-xl;
+  }
+}
 
-  .card-hover {
-    @apply transition-all duration-300 hover:shadow-md hover:translate-y-[-2px];
-  }
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
 
-  .text-input {
-    @apply px-4 py-3 rounded-xl border border-secondary bg-white/40 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all;
-  }
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+html {
+  color-scheme: light;
+}
+
+.dark html {
+  color-scheme: dark;
+}
+
+html, body {
+  height: 100%;
+}
+
+/* Explicitly set text colors for better contrast and readability */
+input, textarea, select {
+  @apply text-foreground;
+}
+
+/* Make sure inputs have proper contrast */
+input::placeholder, textarea::placeholder {
+  @apply text-muted-foreground;
+}
+
+/* Ensure consistent form elements */
+.form-group {
+  @apply mb-4;
+}
+
+/* Improved focus styles for accessibility */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
 }
