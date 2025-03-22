@@ -6,20 +6,96 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 
 const AuthForm: React.FC = () => {
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Form state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerUsername, setRegisterUsername] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Login handler
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Login realizado com sucesso!",
+        description: "Bem-vindo(a) de volta à Outliers.",
+      });
+      
+      navigate('/');
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro no login",
+        description: error.message || "Verifique suas credenciais e tente novamente.",
+      });
+    } finally {
       setIsLoading(false);
-      // For now, just log success
-      console.log('Form submitted');
-    }, 1500);
+    }
+  };
+
+  // Register handler
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    if (!registerEmail || !registerPassword || !registerUsername) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Por favor, preencha todos os campos para criar sua conta.",
+      });
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      // Create the user in Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: registerEmail,
+        password: registerPassword,
+        options: {
+          data: {
+            username: registerUsername,
+          },
+        },
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Conta criada com sucesso!",
+        description: "Verifique seu email para confirmar sua conta.",
+      });
+      
+      navigate('/');
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro no cadastro",
+        description: error.message || "Não foi possível criar sua conta. Tente novamente.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -44,11 +120,11 @@ const AuthForm: React.FC = () => {
         <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsTrigger value="register">Registrar</TabsTrigger>
           </TabsList>
           
           <TabsContent value="login">
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
@@ -60,17 +136,20 @@ const AuthForm: React.FC = () => {
                     autoCapitalize="none"
                     autoComplete="email"
                     autoCorrect="off"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
                     disabled={isLoading}
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
               
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">Senha</Label>
                   <a href="#" className="text-sm text-primary underline-offset-4 hover:underline">
-                    Forgot password?
+                    Esqueceu a senha?
                   </a>
                 </div>
                 <div className="relative">
@@ -78,8 +157,11 @@ const AuthForm: React.FC = () => {
                   <Input
                     id="password"
                     type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
                     disabled={isLoading}
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
@@ -88,11 +170,11 @@ const AuthForm: React.FC = () => {
                 {isLoading ? (
                   <div className="flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    <span>Logging in...</span>
+                    <span>Entrando...</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <span>Sign In</span>
+                    <span>Entrar</span>
                     <ArrowRight className="h-4 w-4" />
                   </div>
                 )}
@@ -101,7 +183,7 @@ const AuthForm: React.FC = () => {
           </TabsContent>
           
           <TabsContent value="register">
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="register-email">Email</Label>
                 <div className="relative">
@@ -113,37 +195,46 @@ const AuthForm: React.FC = () => {
                     autoCapitalize="none"
                     autoComplete="email"
                     autoCorrect="off"
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
                     disabled={isLoading}
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="register-username">Username</Label>
+                <Label htmlFor="register-username">Nome de usuário</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="register-username"
-                    placeholder="Your username"
+                    placeholder="Seu nome de usuário"
                     type="text"
                     autoCapitalize="none"
                     autoCorrect="off"
+                    value={registerUsername}
+                    onChange={(e) => setRegisterUsername(e.target.value)}
                     disabled={isLoading}
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="register-password">Password</Label>
+                <Label htmlFor="register-password">Senha</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="register-password"
                     type="password"
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
                     disabled={isLoading}
                     className="pl-10"
+                    required
                   />
                 </div>
               </div>
@@ -152,11 +243,11 @@ const AuthForm: React.FC = () => {
                 {isLoading ? (
                   <div className="flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    <span>Creating account...</span>
+                    <span>Criando conta...</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <span>Create Account</span>
+                    <span>Criar Conta</span>
                     <ArrowRight className="h-4 w-4" />
                   </div>
                 )}
