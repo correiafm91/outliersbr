@@ -56,8 +56,9 @@ const FeedList: React.FC = () => {
       // Count likes for each post
       const { data: likesData, error: likesError } = await supabase
         .from('likes')
-        .select('post_id, count(*)')
+        .select('post_id, count')
         .in('post_id', postIds)
+        .select('count(*)', { count: 'exact' })
         .group('post_id');
 
       if (likesError) throw likesError;
@@ -65,8 +66,9 @@ const FeedList: React.FC = () => {
       // Count comments for each post
       const { data: commentsData, error: commentsError } = await supabase
         .from('comments')
-        .select('post_id, count(*)')
+        .select('post_id, count')
         .in('post_id', postIds)
+        .select('count(*)', { count: 'exact' })
         .group('post_id');
 
       if (commentsError) throw commentsError;
@@ -100,13 +102,27 @@ const FeedList: React.FC = () => {
         return acc;
       }, {} as Record<string, number>);
 
-      // Combine all data
-      const enhancedPosts = postsData.map(post => ({
-        ...post,
-        likes: likesMap[post.id] || 0,
-        comments: commentsMap[post.id] || 0,
-        has_liked: !!userLikes[post.id]
-      }));
+      // Combine all data and ensure correct typing
+      const enhancedPosts = postsData.map(post => {
+        // Ensure we have the correct profiles structure
+        if (!post.profiles || typeof post.profiles === 'string' || post.profiles.error) {
+          console.error('Invalid profile data:', post.profiles);
+          // Provide default values if profile data is missing
+          post.profiles = {
+            username: 'usuário',
+            avatar_url: null,
+            full_name: null
+          };
+        }
+        
+        return {
+          ...post,
+          profiles: post.profiles,
+          likes: likesMap[post.id] || 0,
+          comments: commentsMap[post.id] || 0,
+          has_liked: !!userLikes[post.id]
+        } as PostType;
+      });
 
       setPosts(enhancedPosts);
     } catch (error: any) {
