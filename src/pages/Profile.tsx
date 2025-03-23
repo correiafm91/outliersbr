@@ -15,6 +15,7 @@ import { CheckCircle, Share2, Grid3X3, Bookmark, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom';
 import Post from '@/components/feed/Post';
 import { motion } from 'framer-motion';
+import { getPostsByUserId, getUserLikedPostIds } from '@/integrations/supabase/functions';
 
 interface ProfileType {
   id: string;
@@ -161,99 +162,29 @@ const Profile: React.FC = () => {
     try {
       setIsPostsLoading(true);
       
-      // Fetch posts with profile data
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles:user_id(username, avatar_url, full_name)
-        `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (postsError) throw postsError;
+      // Get posts for the user with the helper function
+      const postsData = await getPostsByUserId(userId);
       
+      // If no posts yet, return early
       if (!postsData || postsData.length === 0) {
         setUserPosts([]);
         setIsPostsLoading(false);
         return;
       }
-
-      // Get post IDs for likes and comments queries
-      const postIds = postsData.map(post => post.id);
-
-      // Count likes for each post
-      const { data: likesData, error: likesError } = await supabase
-        .from('likes')
-        .select('post_id, count')
-        .in('post_id', postIds)
-        .select('count(*)', { count: 'exact' })
-        .group('post_id');
-
-      if (likesError) throw likesError;
-
-      // Count comments for each post
-      const { data: commentsData, error: commentsError } = await supabase
-        .from('comments')
-        .select('post_id, count')
-        .in('post_id', postIds)
-        .select('count(*)', { count: 'exact' })
-        .group('post_id');
-
-      if (commentsError) throw commentsError;
-
-      // Check if current user has liked each post
-      let userLikes: Record<string, boolean> = {};
+      
+      // If current user is logged in, check which posts they've liked
+      let enhancedPosts = [...postsData];
       
       if (user) {
-        const { data: userLikesData, error: userLikesError } = await supabase
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', user.id)
-          .in('post_id', postIds);
-
-        if (userLikesError) throw userLikesError;
+        const likedPostIds = await getUserLikedPostIds(user.id);
         
-        userLikes = (userLikesData || []).reduce((acc, like) => {
-          acc[like.post_id] = true;
-          return acc;
-        }, {} as Record<string, boolean>);
-      }
-
-      // Process posts with counts
-      const likesMap = (likesData || []).reduce((acc, item) => {
-        acc[item.post_id] = parseInt(item.count);
-        return acc;
-      }, {} as Record<string, number>);
-
-      const commentsMap = (commentsData || []).reduce((acc, item) => {
-        acc[item.post_id] = parseInt(item.count);
-        return acc;
-      }, {} as Record<string, number>);
-
-      // Combine all data
-      const enhancedPosts = postsData.map(post => {
-        // Ensure we have the correct profiles structure
-        if (!post.profiles || typeof post.profiles === 'string' || post.profiles.error) {
-          console.error('Invalid profile data:', post.profiles);
-          // Provide default values if profile data is missing
-          post.profiles = {
-            username: 'usuário',
-            avatar_url: null,
-            full_name: null
-          };
-        }
-        
-        return {
+        enhancedPosts = postsData.map(post => ({
           ...post,
-          profiles: post.profiles,
-          likes: likesMap[post.id] || 0,
-          comments: commentsMap[post.id] || 0,
-          has_liked: !!userLikes[post.id]
-        } as PostType;
-      });
-
-      setUserPosts(enhancedPosts);
+          has_liked: likedPostIds.includes(post.id)
+        }));
+      }
+      
+      setUserPosts(enhancedPosts as PostType[]);
     } catch (error: any) {
       console.error('Error fetching user posts:', error);
       toast.error('Erro ao carregar publicações', {
