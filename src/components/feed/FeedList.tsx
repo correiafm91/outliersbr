@@ -23,7 +23,11 @@ interface PostType {
   has_liked: boolean;
 }
 
-const FeedList: React.FC = () => {
+interface FeedListProps {
+  onLoadStateChange?: (isLoaded: boolean) => void;
+}
+
+const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
   const { user } = useAuth();
   const [posts, setPosts] = useState<PostType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,15 +35,22 @@ const FeedList: React.FC = () => {
 
   const fetchPosts = async () => {
     try {
+      console.log('FeedList: Starting to fetch posts');
       setIsLoading(true);
+      if (onLoadStateChange) onLoadStateChange(false);
 
       // Fetch posts with profile data
       const postsData = await getPostsWithProfiles();
+      console.log('FeedList: Received posts data:', { 
+        postCount: postsData?.length || 0,
+        success: !!postsData 
+      });
 
       // If no posts yet, return early
       if (!postsData || postsData.length === 0) {
         setPosts([]);
         setIsLoading(false);
+        if (onLoadStateChange) onLoadStateChange(true);
         return;
       }
 
@@ -47,7 +58,9 @@ const FeedList: React.FC = () => {
       let enhancedPosts = [...postsData];
       
       if (user) {
+        console.log('FeedList: Fetching liked posts for user');
         const likedPostIds = await getUserLikedPostIds(user.id);
+        console.log('FeedList: User has liked', likedPostIds.length, 'posts');
         
         enhancedPosts = postsData.map(post => ({
           ...post,
@@ -56,6 +69,7 @@ const FeedList: React.FC = () => {
       }
 
       setPosts(enhancedPosts as PostType[]);
+      console.log('FeedList: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching posts:', error);
       toast.error('Erro ao carregar publicações', {
@@ -63,6 +77,8 @@ const FeedList: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+      if (onLoadStateChange) onLoadStateChange(true);
+      console.log('FeedList: Loading state set to false');
     }
   };
 

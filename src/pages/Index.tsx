@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageTransition from '@/components/layout/PageTransition';
 import BottomNav from '@/components/layout/BottomNav';
@@ -11,10 +11,12 @@ import { Button } from '@/components/ui/button';
 import { LogOut, User, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Index: React.FC = () => {
   const { user, isLoading, signOut, profile, hasCompletedProfile } = useAuth();
   const navigate = useNavigate();
+  const [feedLoaded, setFeedLoaded] = useState(false);
   
   const handleLogout = async () => {
     await signOut();
@@ -24,10 +26,53 @@ const Index: React.FC = () => {
     navigate('/profile');
   };
   
+  console.log('Index page rendering state:', { 
+    isAuthLoading: isLoading, 
+    userExists: !!user,
+    profileExists: !!profile,
+    feedLoaded
+  });
+  
+  // If still loading auth after 10 seconds, show a different message
+  const [showLoadingHelp, setShowLoadingHelp] = useState(false);
+  
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setShowLoadingHelp(true);
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoadingHelp(false);
+    }
+  }, [isLoading]);
+  
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+        <p className="text-muted-foreground text-center">Carregando...</p>
+        
+        {showLoadingHelp && (
+          <div className="mt-8 max-w-md text-center">
+            <Alert variant="default" className="bg-background border-primary/50">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-foreground">Está demorando mais que o esperado</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                O sistema pode estar enfrentando dificuldades de conexão. 
+                Tente recarregar a página.
+              </AlertDescription>
+              <Button 
+                size="sm" 
+                className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => window.location.reload()}
+              >
+                Recarregar Página
+              </Button>
+            </Alert>
+          </div>
+        )}
       </div>
     );
   }
@@ -97,7 +142,7 @@ const Index: React.FC = () => {
               </motion.div>
             )}
             
-            <FeedList />
+            <FeedList onLoadStateChange={setFeedLoaded} />
           </div>
         ) : (
           <div className="flex items-center justify-center min-h-screen p-4 bg-background">
