@@ -11,11 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Share2, Grid3X3, Bookmark, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Share2, Grid3X3, Bookmark, ArrowLeft, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Post from '@/components/feed/Post';
 import { motion } from 'framer-motion';
 import { getPostsByUserId, getUserLikedPostIds } from '@/integrations/supabase/functions';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface ProfileType {
   id: string;
@@ -56,18 +57,44 @@ const Profile: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showLoadingHelp, setShowLoadingHelp] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Timer for showing loading help message
+  useEffect(() => {
+    console.log('Profile page load state:', { 
+      authLoading, 
+      isProfileLoading, 
+      isPostsLoading,
+      username: username || 'own profile'
+    });
+    
+    if (isProfileLoading || isPostsLoading) {
+      const timer = setTimeout(() => {
+        setShowLoadingHelp(true);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoadingHelp(false);
+    }
+  }, [isProfileLoading, isPostsLoading, authLoading]);
 
   // Determine if viewing own profile or another user's profile
   useEffect(() => {
     if (!authLoading) {
+      setLoadError(null);
       if (!username && user) {
+        console.log('Profile: Loading own profile for user ID:', user.id);
         setIsOwnProfile(true);
         fetchProfile(user.id);
         fetchUserPosts(user.id);
       } else if (username) {
+        console.log('Profile: Loading profile for username:', username);
         setIsOwnProfile(false);
         fetchProfileByUsername(username);
       } else if (!user) {
+        console.log('Profile: No user logged in, redirecting to home');
         navigate('/');
       }
     }
@@ -75,6 +102,7 @@ const Profile: React.FC = () => {
 
   const fetchProfile = async (userId: string) => {
     try {
+      console.log('Profile: Starting to fetch profile data for userId:', userId);
       setIsProfileLoading(true);
       
       // Fetch the profile
@@ -84,7 +112,12 @@ const Profile: React.FC = () => {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Profile: Error fetching profile data:', error);
+        throw error;
+      }
+      
+      console.log('Profile: Successfully fetched profile data');
       
       // Count the user's posts
       const { count, error: countError } = await supabase
@@ -92,17 +125,23 @@ const Profile: React.FC = () => {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
         
-      if (countError) throw countError;
+      if (countError) {
+        console.error('Profile: Error counting posts:', countError);
+        throw countError;
+      }
+      
+      console.log('Profile: User has', count, 'posts');
       
       setProfileData({
         ...data,
         post_count: count || 0
       });
     } catch (error: any) {
+      console.error('Error fetching profile:', error);
+      setLoadError(`Erro ao carregar perfil: ${error.message}`);
       toast.error('Erro ao carregar perfil', {
         description: error.message,
       });
-      console.error('Error fetching profile:', error);
     } finally {
       setIsProfileLoading(false);
     }
@@ -110,6 +149,7 @@ const Profile: React.FC = () => {
 
   const fetchProfileByUsername = async (usernameToFetch: string) => {
     try {
+      console.log('Profile: Starting to fetch profile by username:', usernameToFetch);
       setIsProfileLoading(true);
       
       // Fetch the profile by username
@@ -117,19 +157,25 @@ const Profile: React.FC = () => {
         .from('profiles')
         .select('*')
         .eq('username', usernameToFetch)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          toast.error('Perfil não encontrado');
-          navigate('/');
-          return;
-        }
+        console.error('Profile: Error fetching profile by username:', error);
         throw error;
       }
       
+      if (!data) {
+        console.error('Profile: No profile found for username:', usernameToFetch);
+        toast.error('Perfil não encontrado');
+        navigate('/');
+        return;
+      }
+      
+      console.log('Profile: Successfully fetched profile by username');
+      
       // Check if this is the current user's profile
       if (user && data.id === user.id) {
+        console.log('Profile: This is the current user\'s profile');
         setIsOwnProfile(true);
       }
       
@@ -139,7 +185,12 @@ const Profile: React.FC = () => {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', data.id);
         
-      if (countError) throw countError;
+      if (countError) {
+        console.error('Profile: Error counting posts:', countError);
+        throw countError;
+      }
+      
+      console.log('Profile: User has', count, 'posts');
       
       setProfileData({
         ...data,
@@ -149,10 +200,11 @@ const Profile: React.FC = () => {
       // Fetch posts for this profile
       fetchUserPosts(data.id);
     } catch (error: any) {
+      console.error('Error fetching profile by username:', error);
+      setLoadError(`Erro ao carregar perfil: ${error.message}`);
       toast.error('Erro ao carregar perfil', {
         description: error.message,
       });
-      console.error('Error fetching profile by username:', error);
     } finally {
       setIsProfileLoading(false);
     }
@@ -160,13 +212,19 @@ const Profile: React.FC = () => {
 
   const fetchUserPosts = async (userId: string) => {
     try {
+      console.log('Profile: Starting to fetch posts for userId:', userId);
       setIsPostsLoading(true);
       
       // Get posts for the user with the helper function
       const postsData = await getPostsByUserId(userId);
+      console.log('Profile: Received posts data:', { 
+        postCount: postsData?.length || 0,
+        success: !!postsData 
+      });
       
       // If no posts yet, return early
       if (!postsData || postsData.length === 0) {
+        console.log('Profile: No posts found for this user');
         setUserPosts([]);
         setIsPostsLoading(false);
         return;
@@ -176,7 +234,9 @@ const Profile: React.FC = () => {
       let enhancedPosts = [...postsData];
       
       if (user) {
+        console.log('Profile: Fetching liked posts for user');
         const likedPostIds = await getUserLikedPostIds(user.id);
+        console.log('Profile: User has liked', likedPostIds.length, 'posts');
         
         enhancedPosts = postsData.map(post => ({
           ...post,
@@ -185,8 +245,10 @@ const Profile: React.FC = () => {
       }
       
       setUserPosts(enhancedPosts as PostType[]);
+      console.log('Profile: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching user posts:', error);
+      setLoadError(`Erro ao carregar publicações: ${error.message}`);
       toast.error('Erro ao carregar publicações', {
         description: error.message,
       });
@@ -231,11 +293,42 @@ const Profile: React.FC = () => {
       toast.error('Erro ao copiar link');
     });
   };
+  
+  const handleRefresh = () => {
+    console.log('Profile: Refreshing page data');
+    setRefreshKey(prevKey => prevKey + 1);
+    setShowLoadingHelp(false);
+    setLoadError(null);
+  };
 
+  // Loading state with retry option
   if (authLoading || isProfileLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+        <p className="text-muted-foreground text-center">Carregando perfil...</p>
+        
+        {(showLoadingHelp || loadError) && (
+          <div className="mt-8 max-w-md text-center">
+            <Alert variant="default" className="bg-background border-primary/50">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-foreground">
+                {loadError ? 'Ocorreu um erro' : 'Está demorando mais que o esperado'}
+              </AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                {loadError || 'O sistema pode estar enfrentando dificuldades de conexão. Tente recarregar a página.'}
+              </AlertDescription>
+              <Button 
+                size="sm" 
+                className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={handleRefresh}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Tentar Novamente
+              </Button>
+            </Alert>
+          </div>
+        )}
       </div>
     );
   }
@@ -349,8 +442,31 @@ const Profile: React.FC = () => {
               
               <TabsContent value="posts" className="mt-4">
                 {isPostsLoading ? (
-                  <div className="flex justify-center py-10">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                  <div className="flex flex-col justify-center items-center py-10">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+                    <p className="text-muted-foreground">Carregando publicações...</p>
+                    
+                    {(showLoadingHelp || loadError) && (
+                      <div className="mt-8 max-w-md text-center">
+                        <Alert variant="default" className="bg-background border-primary/50">
+                          <AlertCircle className="h-4 w-4 text-primary" />
+                          <AlertTitle className="text-foreground">
+                            {loadError ? 'Ocorreu um erro' : 'Está demorando mais que o esperado'}
+                          </AlertTitle>
+                          <AlertDescription className="text-muted-foreground">
+                            {loadError || 'O sistema pode estar enfrentando dificuldades de conexão. Tente recarregar a página.'}
+                          </AlertDescription>
+                          <Button 
+                            size="sm" 
+                            className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                            onClick={handleRefresh}
+                          >
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            Tentar Novamente
+                          </Button>
+                        </Alert>
+                      </div>
+                    )}
                   </div>
                 ) : userPosts.length > 0 ? (
                   <div className="space-y-4">

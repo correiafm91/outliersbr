@@ -5,8 +5,10 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCcw, AlertCircle } from 'lucide-react';
 import { getPostsWithProfiles, getUserLikedPostIds } from '@/integrations/supabase/functions';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 interface PostType {
   id: string;
@@ -32,11 +34,26 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
   const [posts, setPosts] = useState<PostType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [showLoadingHelp, setShowLoadingHelp] = useState(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setShowLoadingHelp(true);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoadingHelp(false);
+    }
+  }, [isLoading]);
 
   const fetchPosts = async () => {
     try {
       console.log('FeedList: Starting to fetch posts');
       setIsLoading(true);
+      setLoadError(null);
       if (onLoadStateChange) onLoadStateChange(false);
 
       // Fetch posts with profile data
@@ -72,6 +89,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       console.log('FeedList: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching posts:', error);
+      setLoadError(`Erro ao carregar publicações: ${error.message}`);
       toast.error('Erro ao carregar publicações', {
         description: error.message,
       });
@@ -91,10 +109,38 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     fetchPosts();
   }, [refreshKey, user]);
 
+  const handleRetry = () => {
+    setShowLoadingHelp(false);
+    refreshPosts();
+  };
+
   if (isLoading) {
     return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground text-center">Carregando publicações...</p>
+        
+        {(showLoadingHelp || loadError) && (
+          <div className="mt-8 max-w-md text-center">
+            <Alert variant="default" className="bg-background border-primary/50">
+              <AlertCircle className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-foreground">
+                {loadError ? 'Ocorreu um erro' : 'Está demorando mais que o esperado'}
+              </AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                {loadError || 'O sistema pode estar enfrentando dificuldades de conexão. Tente novamente.'}
+              </AlertDescription>
+              <Button 
+                size="sm" 
+                className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={handleRetry}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                Tentar Novamente
+              </Button>
+            </Alert>
+          </div>
+        )}
       </div>
     );
   }
