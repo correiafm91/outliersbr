@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { getPostsWithProfiles, getUserLikedPostIds } from '@/integrations/supabase/functions';
 
 interface PostType {
   id: string;
@@ -32,16 +33,8 @@ const FeedList: React.FC = () => {
     try {
       setIsLoading(true);
 
-      // Fetch posts with profile data and like/comment counts
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles:user_id(username, avatar_url, full_name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (postsError) throw postsError;
+      // Fetch posts with profile data
+      const postsData = await getPostsWithProfiles();
 
       // If no posts yet, return early
       if (!postsData || postsData.length === 0) {
@@ -50,81 +43,19 @@ const FeedList: React.FC = () => {
         return;
       }
 
-      // Get post IDs for likes and comments queries
-      const postIds = postsData.map(post => post.id);
-
-      // Count likes for each post
-      const { data: likesData, error: likesError } = await supabase
-        .from('likes')
-        .select('post_id, count')
-        .in('post_id', postIds)
-        .select('count(*)', { count: 'exact' })
-        .group('post_id');
-
-      if (likesError) throw likesError;
-
-      // Count comments for each post
-      const { data: commentsData, error: commentsError } = await supabase
-        .from('comments')
-        .select('post_id, count')
-        .in('post_id', postIds)
-        .select('count(*)', { count: 'exact' })
-        .group('post_id');
-
-      if (commentsError) throw commentsError;
-
-      // Check if current user has liked each post
-      let userLikes: Record<string, boolean> = {};
+      // If user is logged in, check which posts they've liked
+      let enhancedPosts = [...postsData];
       
       if (user) {
-        const { data: userLikesData, error: userLikesError } = await supabase
-          .from('likes')
-          .select('post_id')
-          .eq('user_id', user.id)
-          .in('post_id', postIds);
-
-        if (userLikesError) throw userLikesError;
+        const likedPostIds = await getUserLikedPostIds(user.id);
         
-        userLikes = (userLikesData || []).reduce((acc, like) => {
-          acc[like.post_id] = true;
-          return acc;
-        }, {} as Record<string, boolean>);
+        enhancedPosts = postsData.map(post => ({
+          ...post,
+          has_liked: likedPostIds.includes(post.id)
+        }));
       }
 
-      // Convert likes and comments to a map for easier lookup
-      const likesMap = (likesData || []).reduce((acc, item) => {
-        acc[item.post_id] = parseInt(item.count);
-        return acc;
-      }, {} as Record<string, number>);
-
-      const commentsMap = (commentsData || []).reduce((acc, item) => {
-        acc[item.post_id] = parseInt(item.count);
-        return acc;
-      }, {} as Record<string, number>);
-
-      // Combine all data and ensure correct typing
-      const enhancedPosts = postsData.map(post => {
-        // Ensure we have the correct profiles structure
-        if (!post.profiles || typeof post.profiles === 'string' || post.profiles.error) {
-          console.error('Invalid profile data:', post.profiles);
-          // Provide default values if profile data is missing
-          post.profiles = {
-            username: 'usuário',
-            avatar_url: null,
-            full_name: null
-          };
-        }
-        
-        return {
-          ...post,
-          profiles: post.profiles,
-          likes: likesMap[post.id] || 0,
-          comments: commentsMap[post.id] || 0,
-          has_liked: !!userLikes[post.id]
-        } as PostType;
-      });
-
-      setPosts(enhancedPosts);
+      setPosts(enhancedPosts as PostType[]);
     } catch (error: any) {
       console.error('Error fetching posts:', error);
       toast.error('Erro ao carregar publicações', {

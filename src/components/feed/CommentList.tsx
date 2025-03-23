@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, MessageSquare, ThumbsUp, Clock } from 'lucide-react';
+import { Loader2, MessageSquare, ThumbsUp, Clock, CheckCircle } from 'lucide-react';
 import CommentForm from './CommentForm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,35 +38,55 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     try {
       setIsLoading(true);
       
-      // Fetch all top-level comments for this post
-      const { data, error } = await supabase
+      // Get all comments for this post
+      const { data: commentsData, error: commentsError } = await supabase
         .from('comments')
-        .select(`
-          id,
-          content,
-          created_at,
-          profiles:user_id(username, avatar_url, full_name)
-        `)
+        .select('*')
         .eq('post_id', postId)
         .is('parent_id', null)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (commentsError) throw commentsError;
+
+      if (!commentsData || commentsData.length === 0) {
+        setComments([]);
+        setIsLoading(false);
+        return;
+      }
       
-      // Process the data to ensure correct structure
-      const processedComments = data.map(comment => {
-        // Handle case where profile relationship is not found
-        if (!comment.profiles || typeof comment.profiles === 'string' || comment.profiles.error) {
-          return {
-            ...comment,
-            profiles: {
-              username: 'usuário',
-              avatar_url: null,
-              full_name: null
-            }
-          } as Comment;
-        }
-        return comment as Comment;
+      // Get all user IDs from comments to fetch their profiles
+      const userIds = [...new Set(commentsData.map(comment => comment.user_id))];
+      
+      // Fetch profiles for these users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', userIds);
+        
+      if (profilesError) throw profilesError;
+      
+      // Create a map of user_id to profile for quick lookup
+      const profilesMap = (profilesData || []).reduce((acc, profile) => {
+        acc[profile.id] = profile;
+        return acc;
+      }, {} as Record<string, any>);
+      
+      // Combine comments with profile data
+      const processedComments = commentsData.map(comment => {
+        const profile = profilesMap[comment.user_id] || {
+          username: 'usuário',
+          avatar_url: null,
+          full_name: null
+        };
+        
+        return {
+          ...comment,
+          profiles: {
+            username: profile.username,
+            avatar_url: profile.avatar_url,
+            full_name: profile.full_name
+          }
+        } as Comment;
       });
       
       setComments(processedComments);
@@ -215,8 +235,6 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
                   />
                 </div>
               )}
-              
-              {/* Comment replies would go here */}
             </div>
           </div>
         </motion.div>

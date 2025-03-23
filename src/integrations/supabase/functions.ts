@@ -88,3 +88,149 @@ export async function getCommentsCountForPost(postId: string): Promise<number> {
     return 0;
   }
 }
+
+// Helper function to get posts with profile data
+export async function getPostsWithProfiles() {
+  try {
+    // First, fetch posts
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (postsError) throw postsError;
+    
+    if (!postsData || postsData.length === 0) {
+      return [];
+    }
+
+    // Get all user IDs from the posts to fetch their profiles
+    const userIds = [...new Set(postsData.map(post => post.user_id))];
+    
+    // Fetch all profiles for these users
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', userIds);
+      
+    if (profilesError) throw profilesError;
+    
+    // Create a map of user_id to profile data for quick lookup
+    const profilesMap = (profilesData || []).reduce((acc, profile) => {
+      acc[profile.id] = profile;
+      return acc;
+    }, {} as Record<string, any>);
+    
+    // Count likes for each post
+    const postIds = postsData.map(post => post.id);
+    
+    // Get likes counts
+    const likesPromises = postIds.map(id => getLikesCountForPost(id));
+    const likesCounts = await Promise.all(likesPromises);
+    
+    // Get comments counts
+    const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
+    const commentsCounts = await Promise.all(commentsPromises);
+    
+    // Combine everything
+    const enhancedPosts = postsData.map((post, index) => {
+      const profile = profilesMap[post.user_id] || {
+        username: 'usuário',
+        avatar_url: null,
+        full_name: null
+      };
+      
+      return {
+        ...post,
+        profiles: {
+          username: profile.username,
+          avatar_url: profile.avatar_url,
+          full_name: profile.full_name
+        },
+        likes: likesCounts[index] || 0,
+        comments: commentsCounts[index] || 0,
+        has_liked: false // This will be set separately for logged-in users
+      };
+    });
+    
+    return enhancedPosts;
+  } catch (error) {
+    console.error('Error fetching posts with profiles:', error);
+    throw error;
+  }
+}
+
+// Helper function to get user's liked posts
+export async function getUserLikedPostIds(userId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('likes')
+      .select('post_id')
+      .eq('user_id', userId);
+      
+    if (error) throw error;
+    
+    return (data || []).map(like => like.post_id);
+  } catch (error) {
+    console.error('Error fetching user liked posts:', error);
+    return [];
+  }
+}
+
+// Helper function to get posts for a specific user
+export async function getPostsByUserId(userId: string) {
+  try {
+    // Fetch posts for this user
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (postsError) throw postsError;
+    
+    if (!postsData || postsData.length === 0) {
+      return [];
+    }
+
+    // Fetch the user's profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+      
+    if (profileError) throw profileError;
+    
+    // Count likes and comments for each post
+    const postIds = postsData.map(post => post.id);
+    
+    // Get likes counts
+    const likesPromises = postIds.map(id => getLikesCountForPost(id));
+    const likesCounts = await Promise.all(likesPromises);
+    
+    // Get comments counts
+    const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
+    const commentsCounts = await Promise.all(commentsPromises);
+    
+    // Combine everything
+    const enhancedPosts = postsData.map((post, index) => {
+      return {
+        ...post,
+        profiles: {
+          username: profile.username,
+          avatar_url: profile.avatar_url,
+          full_name: profile.full_name
+        },
+        likes: likesCounts[index] || 0,
+        comments: commentsCounts[index] || 0,
+        has_liked: false // This will be set separately for logged-in users
+      };
+    });
+    
+    return enhancedPosts;
+  } catch (error) {
+    console.error('Error fetching user posts:', error);
+    throw error;
+  }
+}
