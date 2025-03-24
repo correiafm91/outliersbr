@@ -89,20 +89,25 @@ export async function getCommentsCountForPost(postId: string): Promise<number> {
   }
 }
 
-// Helper function to get posts with profile data
+// Helper function to get posts with profile data - optimized with faster timeouts
 export async function getPostsWithProfiles() {
   try {
-    // First, fetch posts
+    console.log('Starting getPostsWithProfiles function');
+    // First, fetch posts with a timeout
     const { data: postsData, error: postsError } = await supabase
       .from('posts')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .abortSignal(AbortSignal.timeout(2500)); // Add timeout
 
     if (postsError) throw postsError;
     
     if (!postsData || postsData.length === 0) {
+      console.log('No posts found');
       return [];
     }
+
+    console.log(`Found ${postsData.length} posts`);
 
     // Get all user IDs from the posts to fetch their profiles
     const userIds = [...new Set(postsData.map(post => post.user_id))];
@@ -124,13 +129,15 @@ export async function getPostsWithProfiles() {
     // Count likes for each post
     const postIds = postsData.map(post => post.id);
     
-    // Get likes counts
+    // Get likes counts - in parallel
     const likesPromises = postIds.map(id => getLikesCountForPost(id));
     const likesCounts = await Promise.all(likesPromises);
     
-    // Get comments counts
+    // Get comments counts - in parallel
     const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
     const commentsCounts = await Promise.all(commentsPromises);
+    
+    console.log('Successfully fetched all related data');
     
     // Combine everything
     const enhancedPosts = postsData.map((post, index) => {

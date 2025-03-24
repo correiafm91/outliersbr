@@ -41,7 +41,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 3000); // Reduced from 5000 to 3000 ms
+      }, 2000); // Reduced from 3000 to 2000 ms for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -61,7 +61,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       
       // Set a timeout for the fetch operation
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 5000);
+        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 3000); // Reduced from 5000 to 3000
       });
       
       // Race the fetch against the timeout
@@ -130,7 +130,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
         <p className="text-muted-foreground text-center">Carregando publicações...</p>
         
         {(showLoadingHelp || loadError) && (
-          <div className="mt-8 max-w-md text-center">
+          <div className="mt-4 max-w-md text-center">
             <Alert variant="default" className="bg-background border-primary/50">
               <AlertCircle className="h-4 w-4 text-primary" />
               <AlertTitle className="text-foreground">

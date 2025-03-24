@@ -1,15 +1,67 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import PageTransition from '@/components/layout/PageTransition';
 import BottomNav from '@/components/layout/BottomNav';
 import { useAuth } from '@/hooks/useAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
-import { Search } from 'lucide-react';
+import { Search, Loader2, RefreshCcw, AlertCircle } from 'lucide-react';
 import UserSearch from '@/components/search/UserSearch';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 const Explore: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const [showLoadingHelp, setShowLoadingHelp] = useState(false);
+  
+  // Show loading help message if taking too long
+  React.useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setShowLoadingHelp(true);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoadingHelp(false);
+    }
+  }, [isLoading]);
+  
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <div className="flex flex-col items-center justify-center min-h-screen p-4">
+          <img 
+            src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+            alt="Outliers Logo" 
+            className="h-24 w-24 mb-4 animate-pulse"
+          />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+          <p className="text-muted-foreground text-center">Carregando...</p>
+          
+          {showLoadingHelp && (
+            <div className="mt-4 max-w-md text-center">
+              <Alert variant="default" className="bg-background border-primary/50">
+                <AlertCircle className="h-4 w-4 text-primary" />
+                <AlertTitle className="text-foreground">Está demorando mais que o esperado</AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  O sistema pode estar enfrentando dificuldades de conexão. 
+                  Tente recarregar a página.
+                </AlertDescription>
+                <Button 
+                  size="sm" 
+                  className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => window.location.reload()}
+                >
+                  Recarregar Página
+                </Button>
+              </Alert>
+            </div>
+          )}
+        </div>
+      </PageTransition>
+    );
+  }
 
   if (!user) {
     return (

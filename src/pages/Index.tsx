@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageTransition from '@/components/layout/PageTransition';
@@ -11,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { LogOut, User, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
 
 const Index: React.FC = () => {
   const { user, isLoading, signOut, profile, hasCompletedProfile } = useAuth();
@@ -33,14 +31,14 @@ const Index: React.FC = () => {
     feedLoaded
   });
   
-  // If still loading auth after 10 seconds, show a different message
+  // Show loading help message after a shorter delay
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 5000); // Reduced from 10000 to 5000 for faster feedback
+      }, 3000); // Reduced from 5000 to 3000 for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -60,7 +58,7 @@ const Index: React.FC = () => {
         <p className="text-muted-foreground text-center">Carregando...</p>
         
         {showLoadingHelp && (
-          <div className="mt-8 max-w-md text-center">
+          <div className="mt-4 max-w-md text-center">
             <Alert variant="default" className="bg-background border-primary/50">
               <AlertCircle className="h-4 w-4 text-primary" />
               <AlertTitle className="text-foreground">Está demorando mais que o esperado</AlertTitle>
