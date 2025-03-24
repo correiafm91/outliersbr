@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import PageTransition from '@/components/layout/PageTransition';
@@ -14,7 +14,21 @@ import { getPostsByUserId, getUserLikedPostIds } from '@/integrations/supabase/f
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { motion } from 'framer-motion';
 import Post from '@/components/feed/Post';
-import { Pencil, User, LogOut, Link, Briefcase, ArrowLeft, RefreshCcw, AlertCircle } from 'lucide-react';
+import { 
+  Pencil, 
+  User, 
+  LogOut, 
+  Link as LinkIcon, 
+  Briefcase, 
+  ArrowLeft, 
+  RefreshCcw, 
+  AlertCircle,
+  CheckCircle,
+  Share2,
+  BookmarkIcon,
+  Grid3X3Icon
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 interface ProfileType {
@@ -416,11 +430,11 @@ const Profile: React.FC = () => {
             <Tabs defaultValue="posts" className="w-full px-4">
               <TabsList className="w-full">
                 <TabsTrigger value="posts" className="flex-1">
-                  <Grid3X3 className="h-4 w-4 mr-2" />
+                  <Grid3X3Icon className="h-4 w-4 mr-2" />
                   Publicações
                 </TabsTrigger>
                 <TabsTrigger value="saved" className="flex-1">
-                  <Bookmark className="h-4 w-4 mr-2" />
+                  <BookmarkIcon className="h-4 w-4 mr-2" />
                   Salvos
                 </TabsTrigger>
               </TabsList>
@@ -489,7 +503,7 @@ const Profile: React.FC = () => {
                   </div>
                 ) : (
                   <div className="text-center py-10">
-                    <Grid3X3 className="h-10 w-10 mx-auto opacity-30" />
+                    <Grid3X3Icon className="h-10 w-10 mx-auto opacity-30" />
                     <p className="mt-4 text-muted-foreground">Nenhuma publicação para exibir</p>
                     {isOwnProfile && (
                       <Button variant="outline" className="mt-4" asChild>
@@ -502,7 +516,7 @@ const Profile: React.FC = () => {
               
               <TabsContent value="saved" className="mt-4">
                 <div className="text-center py-10">
-                  <Bookmark className="h-10 w-10 mx-auto opacity-30" />
+                  <BookmarkIcon className="h-10 w-10 mx-auto opacity-30" />
                   <p className="mt-4 text-muted-foreground">Nenhum item salvo</p>
                 </div>
               </TabsContent>

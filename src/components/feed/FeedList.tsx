@@ -65,7 +65,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       });
       
       // Race the fetch against the timeout
-      const postsData = await Promise.race([fetchPromise, timeoutPromise]);
+      const postsData = await Promise.race([fetchPromise, timeoutPromise]) as PostType[] | null;
       
       console.log('FeedList: Received posts data:', { 
         postCount: postsData?.length || 0,
@@ -94,7 +94,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
         }));
       }
 
-      setPosts(enhancedPosts as PostType[]);
+      setPosts(enhancedPosts);
       console.log('FeedList: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching posts:', error);

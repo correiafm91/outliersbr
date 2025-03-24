@@ -14,7 +14,12 @@ const Explore: React.FC = () => {
   if (!user) {
     return (
       <PageTransition>
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <img 
+            src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+            alt="Outliers Logo" 
+            className="w-20 h-20 mb-6" 
+          />
           <p>Faça login para explorar</p>
         </div>
       </PageTransition>
@@ -24,6 +29,14 @@ const Explore: React.FC = () => {
   return (
     <PageTransition>
       <div className="page-container p-4 pb-20">
+        <div className="flex items-center justify-center mb-6">
+          <img 
+            src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+            alt="Outliers Logo" 
+            className="w-14 h-14 mb-2" 
+          />
+        </div>
+        
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
