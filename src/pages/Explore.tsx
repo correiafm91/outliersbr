@@ -1,31 +1,44 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PageTransition from '@/components/layout/PageTransition';
 import BottomNav from '@/components/layout/BottomNav';
 import { useAuth } from '@/hooks/useAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
-import { Search, Loader2, RefreshCcw, AlertCircle } from 'lucide-react';
+import { Search, RefreshCcw, AlertCircle } from 'lucide-react';
 import UserSearch from '@/components/search/UserSearch';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Explore: React.FC = () => {
   const { user, isLoading } = useAuth();
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   
-  // Show loading help message if taking too long
-  React.useEffect(() => {
+  // Reduce timeout for showing loading help message
+  useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 3000);
+      }, 2000); // Reduced from 3000ms to 2000ms
       
       return () => clearTimeout(timer);
     } else {
       setShowLoadingHelp(false);
     }
+  }, [isLoading]);
+  
+  // Adding a forced completion timeout after 7 seconds
+  useEffect(() => {
+    const forceCompleteTimer = setTimeout(() => {
+      if (isLoading) {
+        console.log('Force loading completion after timeout');
+        setShowLoadingHelp(true);
+      }
+    }, 7000);
+    
+    return () => clearTimeout(forceCompleteTimer);
   }, [isLoading]);
   
   if (isLoading) {
@@ -35,13 +48,18 @@ const Explore: React.FC = () => {
           <img 
             src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
             alt="Outliers Logo" 
-            className="h-24 w-24 mb-4 animate-pulse"
+            className="h-20 w-20 mb-4 animate-pulse"
           />
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
           <p className="text-muted-foreground text-center">Carregando...</p>
           
           {showLoadingHelp && (
-            <div className="mt-4 max-w-md text-center">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mt-4 max-w-md"
+            >
               <Alert variant="default" className="bg-background/50 border-primary/50 backdrop-blur-sm">
                 <AlertCircle className="h-4 w-4 text-primary" />
                 <AlertTitle className="text-foreground">Está demorando mais que o esperado</AlertTitle>
@@ -54,10 +72,11 @@ const Explore: React.FC = () => {
                   className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
                   onClick={() => window.location.reload()}
                 >
+                  <RefreshCcw className="mr-2 h-4 w-4" />
                   Recarregar Página
                 </Button>
               </Alert>
-            </div>
+            </motion.div>
           )}
         </div>
       </PageTransition>
@@ -115,8 +134,11 @@ const Explore: React.FC = () => {
             </TabsContent>
             
             <TabsContent value="trending" className="mt-2 px-3 pb-3">
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">Em breve: Tendências e tópicos populares</p>
+              <div className="space-y-4">
+                <Skeleton className="h-12 w-full bg-gray-800/50" />
+                <Skeleton className="h-12 w-full bg-gray-800/50" />
+                <Skeleton className="h-12 w-full bg-gray-800/50" />
+                <p className="text-muted-foreground text-center pt-4">Em breve: Tendências e tópicos populares</p>
               </div>
             </TabsContent>
           </Tabs>

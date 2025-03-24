@@ -32,15 +32,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasCompletedProfile, setHasCompletedProfile] = useState(false);
 
-  // Fetch profile data function
+  // Fetch profile data function with timeout
   const fetchProfile = async (userId: string) => {
     try {
       setIsProfileLoading(true);
-      const { data, error } = await supabase
+      
+      // Create a promise that rejects after a timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout fetching profile')), a5000);
+      });
+      
+      // Race the fetch against the timeout
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
+      
+      const { data, error } = await Promise.race([
+        profilePromise,
+        timeoutPromise
+      ]) as { data: ProfileData | null, error: any };
 
       if (error) {
         console.error('Error fetching profile:', error);
@@ -67,6 +79,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Create a timeout to set loading to false after max allowed time
+    const loadingTimeout = setTimeout(() => {
+      if (isLoading) {
+        console.log('Auth loading timeout reached, forcing completion');
+        setIsLoading(false);
+      }
+    }, 10000); // Force completion after 10 seconds max
+
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
@@ -96,7 +116,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(loadingTimeout);
+    };
   }, []);
 
   const signOut = async () => {
