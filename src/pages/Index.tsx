@@ -40,7 +40,7 @@ const Index: React.FC = () => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 10000);
+      }, 5000); // Reduced from 10000 to 5000 for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -51,6 +51,11 @@ const Index: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <img 
+          src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+          alt="Outliers Logo" 
+          className="h-24 w-24 mb-4 animate-pulse"
+        />
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
         <p className="text-muted-foreground text-center">Carregando...</p>
         
@@ -90,6 +95,11 @@ const Index: React.FC = () => {
             >
               <div className="flex items-center justify-between py-4">
                 <div className="flex items-center gap-3">
+                  <img 
+                    src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+                    alt="Outliers Logo" 
+                    className="h-10 w-10"
+                  />
                   <h1 className="text-3xl font-bold mb-1 text-foreground">Outliers</h1>
                   {profile?.username?.toLowerCase() === 'outliersofc' && (
                     <span className="bg-primary text-white text-xs px-2 py-1 rounded-full">Oficial</span>
@@ -146,6 +156,13 @@ const Index: React.FC = () => {
           </div>
         ) : (
           <div className="flex items-center justify-center min-h-screen p-4 bg-background">
+            <div className="mb-8 text-center">
+              <img 
+                src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
+                alt="Outliers Logo" 
+                className="h-24 w-24 mx-auto mb-4"
+              />
+            </div>
             <AuthForm />
           </div>
         )}

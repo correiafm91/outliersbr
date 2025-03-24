@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Post from './Post';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,7 +41,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 5000);
+      }, 3000); // Reduced from 5000 to 3000 ms
       
       return () => clearTimeout(timer);
     } else {
@@ -49,15 +49,24 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     }
   }, [isLoading]);
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     try {
       console.log('FeedList: Starting to fetch posts');
       setIsLoading(true);
       setLoadError(null);
       if (onLoadStateChange) onLoadStateChange(false);
 
-      // Fetch posts with profile data
-      const postsData = await getPostsWithProfiles();
+      // Fetch posts with profile data with a timeout
+      const fetchPromise = getPostsWithProfiles();
+      
+      // Set a timeout for the fetch operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 5000);
+      });
+      
+      // Race the fetch against the timeout
+      const postsData = await Promise.race([fetchPromise, timeoutPromise]);
+      
       console.log('FeedList: Received posts data:', { 
         postCount: postsData?.length || 0,
         success: !!postsData 
@@ -98,7 +107,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       if (onLoadStateChange) onLoadStateChange(true);
       console.log('FeedList: Loading state set to false');
     }
-  };
+  }, [user, onLoadStateChange]);
 
   // Trigger refresh of posts
   const refreshPosts = () => {
@@ -107,7 +116,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
 
   useEffect(() => {
     fetchPosts();
-  }, [refreshKey, user]);
+  }, [refreshKey, fetchPosts]);
 
   const handleRetry = () => {
     setShowLoadingHelp(false);

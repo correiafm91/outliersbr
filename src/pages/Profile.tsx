@@ -1,22 +1,21 @@
-
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import PageTransition from '@/components/layout/PageTransition';
 import BottomNav from '@/components/layout/BottomNav';
-import { useAuth } from '@/hooks/useAuth';
 import ProfileForm from '@/components/profile/ProfileForm';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, Share2, Grid3X3, Bookmark, ArrowLeft, RefreshCcw } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import Post from '@/components/feed/Post';
-import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { getPostsByUserId, getUserLikedPostIds } from '@/integrations/supabase/functions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { motion } from 'framer-motion';
+import Post from '@/components/feed/Post';
+import { Pencil, User, LogOut, Link, Briefcase, ArrowLeft, RefreshCcw, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ProfileType {
   id: string;
@@ -60,7 +59,6 @@ const Profile: React.FC = () => {
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Timer for showing loading help message
   useEffect(() => {
     console.log('Profile page load state:', { 
       authLoading, 
@@ -80,7 +78,6 @@ const Profile: React.FC = () => {
     }
   }, [isProfileLoading, isPostsLoading, authLoading]);
 
-  // Determine if viewing own profile or another user's profile
   useEffect(() => {
     if (!authLoading) {
       setLoadError(null);
@@ -105,7 +102,6 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch profile data for userId:', userId);
       setIsProfileLoading(true);
       
-      // Fetch the profile
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -119,7 +115,6 @@ const Profile: React.FC = () => {
       
       console.log('Profile: Successfully fetched profile data');
       
-      // Count the user's posts
       const { count, error: countError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
@@ -152,7 +147,6 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch profile by username:', usernameToFetch);
       setIsProfileLoading(true);
       
-      // Fetch the profile by username
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -173,13 +167,11 @@ const Profile: React.FC = () => {
       
       console.log('Profile: Successfully fetched profile by username');
       
-      // Check if this is the current user's profile
       if (user && data.id === user.id) {
         console.log('Profile: This is the current user\'s profile');
         setIsOwnProfile(true);
       }
       
-      // Count the user's posts
       const { count, error: countError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
@@ -197,7 +189,6 @@ const Profile: React.FC = () => {
         post_count: count || 0
       });
       
-      // Fetch posts for this profile
       fetchUserPosts(data.id);
     } catch (error: any) {
       console.error('Error fetching profile by username:', error);
@@ -215,14 +206,12 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch posts for userId:', userId);
       setIsPostsLoading(true);
       
-      // Get posts for the user with the helper function
       const postsData = await getPostsByUserId(userId);
       console.log('Profile: Received posts data:', { 
         postCount: postsData?.length || 0,
         success: !!postsData 
       });
       
-      // If no posts yet, return early
       if (!postsData || postsData.length === 0) {
         console.log('Profile: No posts found for this user');
         setUserPosts([]);
@@ -230,7 +219,6 @@ const Profile: React.FC = () => {
         return;
       }
       
-      // If current user is logged in, check which posts they've liked
       let enhancedPosts = [...postsData];
       
       if (user) {
@@ -301,7 +289,6 @@ const Profile: React.FC = () => {
     setLoadError(null);
   };
 
-  // Loading state with retry option
   if (authLoading || isProfileLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -349,7 +336,6 @@ const Profile: React.FC = () => {
           </div>
         ) : profileData ? (
           <div className="max-w-xl mx-auto">
-            {/* Profile Header */}
             <div className="relative mb-4">
               <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/40 w-full"></div>
               <div className="px-4">
@@ -427,7 +413,6 @@ const Profile: React.FC = () => {
               </div>
             </div>
             
-            {/* Content Tabs */}
             <Tabs defaultValue="posts" className="w-full px-4">
               <TabsList className="w-full">
                 <TabsTrigger value="posts" className="flex-1">
