@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Search, PlusSquare, Heart, User, BookmarkIcon, MessageCircle } from 'lucide-react';
@@ -7,22 +8,40 @@ const BottomNav: React.FC = () => {
   const location = useLocation();
   
   const navItems = [
-    { icon: Home, path: '/', label: 'Home' },
-    { icon: Search, path: '/explore', label: 'Explore' },
-    { icon: PlusSquare, path: '/create', label: 'Create' },
-    { icon: Heart, path: '/notifications', label: 'Activity' },
-    { icon: User, path: '/profile', label: 'Profile' },
-    {
-      icon: <BookmarkIcon className="h-6 w-6" />,
-      label: "Salvos",
-      href: "/saved",
-      active: location.pathname === "/saved"
+    { 
+      icon: Home, 
+      path: '/', 
+      label: 'Home' 
+    },
+    { 
+      icon: Search, 
+      path: '/explore', 
+      label: 'Explore' 
+    },
+    { 
+      icon: PlusSquare, 
+      path: '/create', 
+      label: 'Create' 
+    },
+    { 
+      icon: Heart, 
+      path: '/notifications', 
+      label: 'Activity' 
+    },
+    { 
+      icon: User, 
+      path: '/profile', 
+      label: 'Profile' 
     },
     {
-      icon: <MessageCircle className="h-6 w-6" />,
-      label: "Mensagens",
-      href: "/messages",
-      active: location.pathname === "/messages"
+      icon: BookmarkIcon,
+      path: "/saved",
+      label: "Salvos"
+    },
+    {
+      icon: MessageCircle,
+      path: "/messages",
+      label: "Mensagens"
     },
   ];
 
@@ -31,6 +50,7 @@ const BottomNav: React.FC = () => {
       <div className="flex justify-around items-center h-16">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
+          const IconComponent = item.icon;
           
           return (
             <Link
@@ -41,7 +61,7 @@ const BottomNav: React.FC = () => {
                 isActive ? "text-primary" : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
               )}
             >
-              <item.icon className={cn(
+              <IconComponent className={cn(
                 "h-6 w-6",
                 isActive ? "scale-110" : "scale-100"
               )} />
