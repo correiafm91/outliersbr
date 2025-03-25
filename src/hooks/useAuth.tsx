@@ -32,27 +32,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasCompletedProfile, setHasCompletedProfile] = useState(false);
 
-  // Fetch profile data function with timeout
+  // Fetch profile data function with better error handling
   const fetchProfile = async (userId: string) => {
     try {
       setIsProfileLoading(true);
       
-      // Create a promise that rejects after a timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout fetching profile')), 5000); // Fixed the a5000 typo
-      });
+      // Use AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 seconds timeout
       
-      // Race the fetch against the timeout
-      const profilePromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .single()
+        .abortSignal(controller.signal);
       
-      const { data, error } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ]) as { data: ProfileData | null, error: any };
+      clearTimeout(timeoutId);
 
       if (error) {
         console.error('Error fetching profile:', error);
@@ -63,8 +59,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // Check if profile has been completed (has all required fields)
       setHasCompletedProfile(!!(data?.bio && data?.avatar_url && data?.full_name));
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in fetchProfile:', error);
+      // Don't show timeout errors as toasts to avoid spamming users
+      if (error.name !== 'AbortError') {
+        toast.error('Erro ao carregar perfil', { 
+          description: 'Tente novamente mais tarde',
+          duration: 3000 
+        });
+      }
       return null;
     } finally {
       setIsProfileLoading(false);
@@ -85,7 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log('Auth loading timeout reached, forcing completion');
         setIsLoading(false);
       }
-    }, 10000); // Force completion after 10 seconds max
+    }, 5000); // Force completion after 5 seconds max (reduced from 10)
 
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -113,6 +116,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await fetchProfile(session.user.id);
       }
       
+      setIsLoading(false);
+    }).catch(error => {
+      console.error('Error getting session:', error);
       setIsLoading(false);
     });
 

@@ -124,7 +124,7 @@ const SavedPostsPage = () => {
 
         {savedPosts && savedPosts.length > 0 ? (
           <div className="space-y-4">
-            {savedPosts.map((post, index) => (
+            {savedPosts.map((post: any, index: number) => (
               <motion.div
                 key={post.id}
                 initial={{ opacity: 0, y: 20 }}
@@ -134,10 +134,10 @@ const SavedPostsPage = () => {
                 <Post 
                   id={post.id}
                   author={{
-                    name: post.profiles.full_name || post.profiles.username,
-                    username: post.profiles.username,
-                    avatar: post.profiles.avatar_url || 'https://via.placeholder.com/150',
-                    verified: post.profiles.username?.toLowerCase() === 'outliersofc'
+                    name: post.profiles?.full_name || post.profiles?.username || 'Usuário',
+                    username: post.profiles?.username || 'usuario',
+                    avatar: post.profiles?.avatar_url || 'https://via.placeholder.com/150',
+                    verified: post.profiles?.username?.toLowerCase() === 'outliersofc'
                   }}
                   content={post.content}
                   images={post.images || []}

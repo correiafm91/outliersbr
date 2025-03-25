@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,15 +21,20 @@ const FollowPage = lazy(() => import("./pages/Follow"));
 const SavedPosts = lazy(() => import("./pages/SavedPosts"));
 const Messages = lazy(() => import("./pages/Messages"));
 
-// Configure QueryClient with better defaults for performance
+// Configure QueryClient with better defaults for performance and error handling
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 60 * 1000, // 1 minute
+      staleTime: 30 * 1000, // 30 seconds (reduced from 60 seconds for more frequent updates)
       gcTime: 5 * 60 * 1000, // 5 minutes (replacing deprecated cacheTime)
       refetchOnWindowFocus: false,
       refetchOnMount: true,
+      useErrorBoundary: false, // Don't use error boundary to prevent blank screens
+      onError: (error) => {
+        console.error('Query error:', error);
+        // We'll handle errors in components
+      },
     },
   },
 });
@@ -88,8 +94,16 @@ const App = () => (
                 </Suspense>
               } />
               <Route path="/post/:id" element={<Index />} />
-              <Route path="/saved" element={<SavedPosts />} />
-              <Route path="/messages" element={<Messages />} />
+              <Route path="/saved" element={
+                <Suspense fallback={<PageLoader />}>
+                  <SavedPosts />
+                </Suspense>
+              } />
+              <Route path="/messages" element={
+                <Suspense fallback={<PageLoader />}>
+                  <Messages />
+                </Suspense>
+              } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

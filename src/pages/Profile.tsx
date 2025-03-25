@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -542,18 +543,18 @@ const Profile: React.FC = () => {
         )}
         
         <BottomNav />
+        
+        {profileData && (
+          <ProfileImageModal
+            imageUrl={profileData.avatar_url}
+            username={profileData.username}
+            isOpen={profileImageModalOpen}
+            onClose={() => setProfileImageModalOpen(false)}
+          />
+        )}
       </main>
     </PageTransition>
   );
 };
 
 export default Profile;
-
-{profileData && (
-  <ProfileImageModal
-    imageUrl={profileData.avatar_url}
-    username={profileData.username}
-    isOpen={profileImageModalOpen}
-    onClose={() => setProfileImageModalOpen(false)}
-  />
-)}
