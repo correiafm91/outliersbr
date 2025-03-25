@@ -16,6 +16,8 @@ const Profile = lazy(() => import("./pages/Profile"));
 const Create = lazy(() => import("./pages/Create"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const UserProfilePage = lazy(() => import("./pages/UserProfile"));
+const FollowPage = lazy(() => import("./pages/Follow"));
 
 // Configure QueryClient with better defaults for performance
 const queryClient = new QueryClient({
@@ -23,7 +25,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 60 * 1000, // 1 minute
-      cacheTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 5 * 60 * 1000, // 5 minutes (replacing deprecated cacheTime)
       refetchOnWindowFocus: false,
       refetchOnMount: true,
     },
@@ -76,7 +78,12 @@ const App = () => (
               } />
               <Route path="/profile/:username" element={
                 <Suspense fallback={<PageLoader />}>
-                  <Profile />
+                  <UserProfilePage />
+                </Suspense>
+              } />
+              <Route path="/follow/:type" element={
+                <Suspense fallback={<PageLoader />}>
+                  <FollowPage />
                 </Suspense>
               } />
               <Route path="/post/:id" element={<Index />} />

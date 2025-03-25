@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       // Create a promise that rejects after a timeout
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout fetching profile')), a5000);
+        setTimeout(() => reject(new Error('Timeout fetching profile')), 5000); // Fixed the a5000 typo
       });
       
       // Race the fetch against the timeout
@@ -60,8 +60,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       setProfile(data);
-      // Check if profile has been completed (has bio or avatar)
-      setHasCompletedProfile(!!(data?.bio || data?.avatar_url));
+      // Check if profile has been completed (has all required fields)
+      setHasCompletedProfile(!!(data?.bio && data?.avatar_url && data?.full_name));
       return data;
     } catch (error) {
       console.error('Error in fetchProfile:', error);

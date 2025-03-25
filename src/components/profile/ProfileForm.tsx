@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,15 +19,17 @@ interface ProfileFormProps {
     avatar_url?: string;
     linkedin_url?: string;
     website_url?: string;
+    full_name?: string;
     is_public?: boolean;
   };
   onSuccess?: () => void;
 }
 
 const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [username, setUsername] = useState(initialData?.username || '');
+  const [fullName, setFullName] = useState(initialData?.full_name || '');
   const [bio, setBio] = useState(initialData?.bio || '');
   const [industry, setIndustry] = useState(initialData?.industry || '');
   const [linkedin, setLinkedin] = useState(initialData?.linkedin_url || '');
@@ -35,15 +37,62 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
   const [isPublic, setIsPublic] = useState(initialData?.is_public !== false);
   const [avatar, setAvatar] = useState<string | null>(initialData?.avatar_url || null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const isVerified = username.toLowerCase() === 'outliersofc';
+
+  // Validate username when it changes
+  useEffect(() => {
+    const checkUsername = async () => {
+      // Only check if username has changed from initial value
+      if (username && username !== initialData?.username) {
+        if (username.length < 3) {
+          setUsernameError('O nome de usuário deve ter pelo menos 3 caracteres');
+          return;
+        }
+        
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+          setUsernameError('O nome de usuário deve conter apenas letras, números e sublinhados');
+          return;
+        }
+        
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('username', username)
+            .neq('id', user?.id || '')
+            .maybeSingle();
+            
+          if (error) throw error;
+          
+          if (data) {
+            setUsernameError('Este nome de usuário já está em uso');
+          } else {
+            setUsernameError(null);
+          }
+        } catch (error) {
+          console.error('Error checking username:', error);
+        }
+      } else {
+        setUsernameError(null);
+      }
+    };
+    
+    checkUsername();
+  }, [username, initialData?.username, user?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!username.trim()) {
       toast.error('Nome de usuário é obrigatório');
+      return;
+    }
+    
+    if (usernameError) {
+      toast.error(usernameError);
       return;
     }
     
@@ -77,6 +126,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
       const { error } = await supabase.from('profiles').upsert({
         id: user?.id,
         username,
+        full_name: fullName,
         bio,
         industry,
         linkedin_url: linkedin,
@@ -92,10 +142,14 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
       setAvatar(avatarUrl);
       setUploadPreview(null);
       
+      // Refresh profile data in context
+      await refreshProfile();
+      
       if (onSuccess) {
         onSuccess();
       }
     } catch (error: any) {
+      console.error('Error updating profile:', error);
       toast.error('Erro ao atualizar perfil', {
         description: error.message,
       });
@@ -136,11 +190,11 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
       transition={{ duration: 0.5 }}
       className="w-full"
     >
-      <div className="glass-panel p-6 bg-card border border-border rounded-lg shadow-sm">
+      <div className="glass-panel p-6 bg-gray-900 border border-gray-800 rounded-lg shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex flex-col items-center justify-center space-y-4">
             <div className="relative">
-              <div className="h-24 w-24 rounded-full overflow-hidden bg-secondary flex items-center justify-center shadow-md border border-border">
+              <div className="h-24 w-24 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center shadow-md border border-gray-700">
                 {uploadPreview ? (
                   <img 
                     src={uploadPreview} 
@@ -161,7 +215,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
                 type="button" 
                 size="sm" 
                 variant="secondary" 
-                className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+                className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0 bg-gray-700 hover:bg-gray-600"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
@@ -198,12 +252,17 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={isLoading}
-                className="bg-background text-foreground border-input"
+                className="bg-gray-800 text-foreground border-gray-700"
               />
               {isVerified && (
                 <CheckCircle className="absolute right-3 top-3 h-4 w-4 text-primary" />
               )}
             </div>
+            {usernameError && (
+              <p className="text-xs text-red-400">
+                {usernameError}
+              </p>
+            )}
             {isVerified && (
               <p className="text-xs text-primary">
                 Conta oficial Outliers
@@ -212,12 +271,24 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="fullName" className="text-foreground">Nome Completo</Label>
+            <Input
+              id="fullName"
+              placeholder="Seu nome completo ou nome da empresa"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={isLoading}
+              className="bg-gray-800 text-foreground border-gray-700"
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="bio" className="text-foreground">Biografia</Label>
             <Textarea
               id="bio"
               placeholder="Conte um pouco sobre você ou sua empresa"
               disabled={isLoading}
-              className="resize-none min-h-[100px] bg-background text-foreground border-input"
+              className="resize-none min-h-[100px] bg-gray-800 text-foreground border-gray-700"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
             />
@@ -229,7 +300,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
               id="industry"
               placeholder="Ex: Tecnologia, Marketing, Finanças"
               disabled={isLoading}
-              className="bg-background text-foreground border-input"
+              className="bg-gray-800 text-foreground border-gray-700"
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
             />
@@ -242,7 +313,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
               <Input
                 placeholder="URL do LinkedIn"
                 disabled={isLoading}
-                className="pl-10 bg-background text-foreground border-input"
+                className="pl-10 bg-gray-800 text-foreground border-gray-700"
                 value={linkedin}
                 onChange={(e) => setLinkedin(e.target.value)}
               />
@@ -252,7 +323,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
               <Input
                 placeholder="URL do Website"
                 disabled={isLoading}
-                className="pl-10 bg-background text-foreground border-input"
+                className="pl-10 bg-gray-800 text-foreground border-gray-700"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
               />
