@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import ProfileImageModal from '@/components/profile/ProfileImageModal';
+import ShareProfileButton from '@/components/profile/ShareProfileButton';
 
 interface ProfileType {
   id: string;
@@ -72,6 +74,7 @@ const Profile: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [profileImageModalOpen, setProfileImageModalOpen] = useState(false);
 
   useEffect(() => {
     console.log('Profile page load state:', { 
@@ -354,7 +357,10 @@ const Profile: React.FC = () => {
               <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/40 w-full"></div>
               <div className="px-4">
                 <div className="flex justify-between -mt-16">
-                  <Avatar className="h-24 w-24 border-4 border-background">
+                  <Avatar 
+                    className="h-24 w-24 border-4 border-background cursor-pointer" 
+                    onClick={() => setProfileImageModalOpen(true)}
+                  >
                     <AvatarImage src={profileData.avatar_url || undefined} alt={profileData.username} />
                     <AvatarFallback className="bg-primary/20 text-xl font-bold">
                       {profileData.username?.[0]?.toUpperCase() || 'U'}
@@ -371,9 +377,11 @@ const Profile: React.FC = () => {
                         Seguir
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={handleShare}>
-                      <Share2 className="h-4 w-4" />
-                    </Button>
+                    <ShareProfileButton 
+                      username={profileData.username} 
+                      fullName={profileData.full_name} 
+                      variant="ghost"
+                    />
                   </div>
                 </div>
                 
@@ -540,3 +548,12 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+
+{profileData && (
+  <ProfileImageModal
+    imageUrl={profileData.avatar_url}
+    username={profileData.username}
+    isOpen={profileImageModalOpen}
+    onClose={() => setProfileImageModalOpen(false)}
+  />
+)}

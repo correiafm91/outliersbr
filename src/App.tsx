@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,6 +17,8 @@ const Explore = lazy(() => import("./pages/Explore"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const UserProfilePage = lazy(() => import("./pages/UserProfile"));
 const FollowPage = lazy(() => import("./pages/Follow"));
+const SavedPosts = lazy(() => import("./pages/SavedPosts"));
+const Messages = lazy(() => import("./pages/Messages"));
 
 // Configure QueryClient with better defaults for performance
 const queryClient = new QueryClient({
@@ -87,6 +88,8 @@ const App = () => (
                 </Suspense>
               } />
               <Route path="/post/:id" element={<Index />} />
+              <Route path="/saved" element={<SavedPosts />} />
+              <Route path="/messages" element={<Messages />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

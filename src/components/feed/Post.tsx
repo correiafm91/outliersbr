@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import SavePostButton from './SavePostButton';
 
 interface PostProps {
   id: string;
@@ -256,6 +256,8 @@ const Post: React.FC<PostProps> = ({
               )}
               <span>{likeCount}</span>
             </Button>
+            
+            <SavePostButton postId={id} onRefresh={onRefresh} />
             
             <Button 
               variant="ghost" 

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,8 +35,9 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import ProfileImageModal from '@/components/profile/ProfileImageModal';
+import ShareProfileButton from '@/components/profile/ShareProfileButton';
 
-// Types
 interface ProfileType {
   id: string;
   username: string;
@@ -84,8 +84,8 @@ const UserProfilePage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  
-  // Add loading indicator timeout
+  const [profileImageModalOpen, setProfileImageModalOpen] = useState(false);
+
   useEffect(() => {
     if (isProfileLoading || isPostsLoading) {
       const timer = setTimeout(() => {
@@ -97,15 +97,14 @@ const UserProfilePage: React.FC = () => {
       setShowLoadingHelp(false);
     }
   }, [isProfileLoading, isPostsLoading]);
-  
-  // Load the profile data
+
   useEffect(() => {
     if (!authLoading && username) {
       setLoadError(null);
       fetchProfileByUsername(username);
     }
   }, [username, authLoading, refreshKey]);
-  
+
   const fetchProfileByUsername = async (usernameToFetch: string) => {
     try {
       setIsProfileLoading(true);
@@ -118,26 +117,22 @@ const UserProfilePage: React.FC = () => {
         return;
       }
       
-      // Get follower and following counts
       const followers = await getFollowersCount(profileData.id);
       const following = await getFollowingCount(profileData.id);
       setFollowersCount(followers);
       setFollowingCount(following);
       
-      // Check if current user is following this profile
       let isFollowed = false;
       if (user) {
         isFollowed = await isFollowingUser(profileData.id);
         setIsFollowing(isFollowed);
       }
       
-      // Get post count
       const { count } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', profileData.id);
       
-      // Set complete profile data
       setProfileData({
         ...profileData,
         post_count: count || 0,
@@ -146,7 +141,6 @@ const UserProfilePage: React.FC = () => {
         is_followed: isFollowed
       });
       
-      // Load posts for this user
       fetchUserPosts(profileData.id);
     } catch (error: any) {
       console.error('Error fetching profile:', error);
@@ -158,7 +152,7 @@ const UserProfilePage: React.FC = () => {
       setIsProfileLoading(false);
     }
   };
-  
+
   const fetchUserPosts = async (userId: string) => {
     try {
       setIsPostsLoading(true);
@@ -193,7 +187,7 @@ const UserProfilePage: React.FC = () => {
       setIsPostsLoading(false);
     }
   };
-  
+
   const handleFollowToggle = async () => {
     if (!user || !profileData) return;
     
@@ -201,7 +195,6 @@ const UserProfilePage: React.FC = () => {
       setIsFollowLoading(true);
       
       if (isFollowing) {
-        // Unfollow
         const success = await unfollowUser(profileData.id);
         if (success) {
           setIsFollowing(false);
@@ -209,7 +202,6 @@ const UserProfilePage: React.FC = () => {
           toast.success(`Você deixou de seguir @${profileData.username}`);
         }
       } else {
-        // Follow
         const success = await followUser(profileData.id);
         if (success) {
           setIsFollowing(true);
@@ -224,7 +216,7 @@ const UserProfilePage: React.FC = () => {
       setIsFollowLoading(false);
     }
   };
-  
+
   const handleShare = () => {
     if (profileData) {
       const url = `${window.location.origin}/profile/${profileData.username}`;
@@ -252,26 +244,25 @@ const UserProfilePage: React.FC = () => {
       toast.error('Erro ao copiar link');
     });
   };
-  
+
   const handleRefresh = () => {
     setRefreshKey(prevKey => prevKey + 1);
     setShowLoadingHelp(false);
     setLoadError(null);
   };
-  
+
   const navigateToFollowers = () => {
     if (profileData) {
       navigate(`/follow/followers?username=${profileData.username}`);
     }
   };
-  
+
   const navigateToFollowing = () => {
     if (profileData) {
       navigate(`/follow/following?username=${profileData.username}`);
     }
   };
 
-  // Loading state
   if (authLoading || isProfileLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-black text-white">
@@ -308,7 +299,6 @@ const UserProfilePage: React.FC = () => {
       <main className="min-h-screen pb-20 bg-black text-white">
         {profileData ? (
           <div className="max-w-xl mx-auto">
-            {/* Back button */}
             <div className="p-4">
               <Button variant="ghost" onClick={() => navigate(-1)} className="text-white">
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -320,11 +310,14 @@ const UserProfilePage: React.FC = () => {
               <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/40 w-full"></div>
               <div className="px-4">
                 <div className="flex justify-between -mt-16">
-                  <Avatar className="h-24 w-24 border-4 border-black">
+                  <Avatar 
+                    className="h-24 w-24 border-4 border-black cursor-pointer" 
+                    onClick={() => setProfileImageModalOpen(true)}
+                  >
                     <AvatarImage 
                       src={profileData.avatar_url || undefined} 
                       alt={profileData.username}
-                      className="object-cover" // Prevent image distortion
+                      className="object-cover"
                     />
                     <AvatarFallback className="bg-primary/20 text-xl font-bold">
                       {profileData.username?.[0]?.toUpperCase() || 'U'}
@@ -349,9 +342,12 @@ const UserProfilePage: React.FC = () => {
                         {isFollowing ? 'Seguindo' : 'Seguir'}
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" onClick={handleShare} className="text-white">
-                      <Share2 className="h-4 w-4" />
-                    </Button>
+                    <ShareProfileButton 
+                      username={profileData.username} 
+                      fullName={profileData.full_name} 
+                      variant="ghost" 
+                      className="text-white"
+                    />
                   </div>
                 </div>
                 
@@ -528,3 +524,12 @@ const UserProfilePage: React.FC = () => {
 };
 
 export default UserProfilePage;
+
+{profileData && (
+  <ProfileImageModal
+    imageUrl={profileData.avatar_url}
+    username={profileData.username}
+    isOpen={profileImageModalOpen}
+    onClose={() => setProfileImageModalOpen(false)}
+  />
+)}

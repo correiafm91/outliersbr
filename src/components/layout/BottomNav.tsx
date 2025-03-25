@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Search, PlusSquare, Heart, User } from 'lucide-react';
+import { Home, Search, PlusSquare, Heart, User, BookmarkIcon, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const BottomNav: React.FC = () => {
@@ -13,6 +12,18 @@ const BottomNav: React.FC = () => {
     { icon: PlusSquare, path: '/create', label: 'Create' },
     { icon: Heart, path: '/notifications', label: 'Activity' },
     { icon: User, path: '/profile', label: 'Profile' },
+    {
+      icon: <BookmarkIcon className="h-6 w-6" />,
+      label: "Salvos",
+      href: "/saved",
+      active: location.pathname === "/saved"
+    },
+    {
+      icon: <MessageCircle className="h-6 w-6" />,
+      label: "Mensagens",
+      href: "/messages",
+      active: location.pathname === "/messages"
+    },
   ];
 
   return (

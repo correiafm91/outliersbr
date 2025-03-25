@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +20,7 @@ interface ProfileFormProps {
     website_url?: string;
     full_name?: string;
     is_public?: boolean;
+    banner_url?: string;
   };
   onSuccess?: () => void;
 }
@@ -39,13 +39,14 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bannerUrl, setBannerUrl] = useState(initialData?.banner_url || null);
+  const [bannerUploadPreview, setBannerUploadPreview] = useState<string | null>(null);
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
   
   const isVerified = username.toLowerCase() === 'outliersofc';
 
-  // Validate username when it changes
   useEffect(() => {
     const checkUsername = async () => {
-      // Only check if username has changed from initial value
       if (username && username !== initialData?.username) {
         if (username.length < 3) {
           setUsernameError('O nome de usuário deve ter pelo menos 3 caracteres');
@@ -101,14 +102,12 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
     try {
       let avatarUrl = avatar;
       
-      // If there's a new image to upload
       if (uploadPreview && user) {
         const file = await (await fetch(uploadPreview)).blob();
         const fileExt = 'jpg';
         const fileName = `${user.id}-${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
         
-        // Upload the image
         const { error: uploadError, data } = await supabase.storage
           .from('avatars')
           .upload(filePath, file, { upsert: true });
@@ -122,7 +121,27 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
         avatarUrl = publicUrl;
       }
       
-      // Update profile in database
+      let bannerImageUrl = bannerUrl;
+      
+      if (bannerUploadPreview && user) {
+        const file = await (await fetch(bannerUploadPreview)).blob();
+        const fileExt = 'jpg';
+        const fileName = `banner-${user.id}-${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+        
+        const { error: uploadError, data } = await supabase.storage
+          .from('banners')
+          .upload(filePath, file, { upsert: true });
+          
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('banners')
+          .getPublicUrl(filePath);
+          
+        bannerImageUrl = publicUrl;
+      }
+      
       const { error } = await supabase.from('profiles').upsert({
         id: user?.id,
         username,
@@ -132,6 +151,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
         linkedin_url: linkedin,
         website_url: website,
         avatar_url: avatarUrl,
+        banner_url: bannerImageUrl,
         is_public: isPublic,
         updated_at: new Date().toISOString(),
       });
@@ -141,8 +161,9 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
       toast.success('Perfil atualizado com sucesso!');
       setAvatar(avatarUrl);
       setUploadPreview(null);
+      setBannerUrl(bannerImageUrl);
+      setBannerUploadPreview(null);
       
-      // Refresh profile data in context
       await refreshProfile();
       
       if (onSuccess) {
@@ -180,6 +201,31 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
     setUploadPreview(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('A imagem deve ter no máximo 5MB');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setBannerUploadPreview(e.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeBannerImage = () => {
+    setBannerUploadPreview(null);
+    if (bannerFileInputRef.current) {
+      bannerFileInputRef.current.value = '';
     }
   };
 
@@ -241,6 +287,60 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSuccess }) => 
               </Button>
             )}
             <span className="text-sm text-muted-foreground">Selecione uma foto de perfil</span>
+          </div>
+
+          <div className="space-y-4 mt-6">
+            <Label className="text-foreground">Banner do Perfil</Label>
+            <div className="relative">
+              <div className="h-32 w-full rounded-lg overflow-hidden bg-gray-800 flex items-center justify-center">
+                {bannerUploadPreview ? (
+                  <img 
+                    src={bannerUploadPreview} 
+                    alt="Pré-visualização do banner" 
+                    className="h-full w-full object-cover"
+                  />
+                ) : bannerUrl ? (
+                  <img 
+                    src={bannerUrl} 
+                    alt="Banner de perfil" 
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Camera className="h-8 w-8 text-muted-foreground" />
+                )}
+              </div>
+              <Button 
+                type="button" 
+                size="sm" 
+                variant="secondary" 
+                className="absolute bottom-2 right-2 rounded-full p-2 bg-gray-700 hover:bg-gray-600"
+                onClick={() => bannerFileInputRef.current?.click()}
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
+              <input 
+                ref={bannerFileInputRef}
+                id="banner-image" 
+                type="file" 
+                className="hidden" 
+                onChange={handleBannerUpload}
+                accept="image/*"
+              />
+            </div>
+            {bannerUploadPreview && (
+              <Button 
+                type="button" 
+                variant="destructive" 
+                size="sm"
+                onClick={removeBannerImage}
+                className="text-xs flex items-center gap-1"
+              >
+                <Trash className="h-3 w-3" /> Remover Banner
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">
+              O banner será exibido no topo do seu perfil
+            </span>
           </div>
 
           <div className="space-y-2">
