@@ -9,6 +9,11 @@ type ProfileData = {
   bio: string | null;
   avatar_url: string | null;
   banner_url: string | null;
+  full_name: string | null;
+  industry: string | null;
+  website_url: string | null;
+  linkedin_url: string | null;
+  is_public: boolean | null;
   [key: string]: any;
 };
 

@@ -40,7 +40,8 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     try {
       setIsLoading(true);
       
-      let query = supabase
+      // First get the comments with profile data
+      const { data: commentsData, error: commentsError } = await supabase
         .from('comments')
         .select(`
           id,
@@ -50,28 +51,58 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
             id,
             username,
             avatar_url
-          ),
-          likes_count:comment_likes(count)
+          )
         `)
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
       
-      const { data, error } = await query;
+      if (commentsError) throw commentsError;
       
-      if (error) throw error;
+      if (!commentsData || commentsData.length === 0) {
+        setComments([]);
+        setIsLoading(false);
+        return;
+      }
       
-      let commentsData = data.map(item => ({
-        id: item.id,
-        content: item.content,
-        created_at: item.created_at,
-        user: {
-          id: (item.profiles as any).id,
-          username: (item.profiles as any).username,
-          avatar_url: (item.profiles as any).avatar_url,
-        },
-        likes_count: (item.likes_count as any) || 0,
-        has_liked: false
-      }));
+      // For each comment, get the likes count through a separate query
+      const commentsWithLikes = await Promise.all(
+        commentsData.map(async (comment) => {
+          // Count likes for this comment
+          const { count, error: likesCountError } = await supabase
+            .from('comment_likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('comment_id', comment.id);
+            
+          if (likesCountError) {
+            console.error('Error counting comment likes:', likesCountError);
+            return {
+              id: comment.id,
+              content: comment.content,
+              created_at: comment.created_at,
+              user: {
+                id: (comment.profiles as any).id,
+                username: (comment.profiles as any).username,
+                avatar_url: (comment.profiles as any).avatar_url,
+              },
+              likes_count: 0,
+              has_liked: false
+            };
+          }
+          
+          return {
+            id: comment.id,
+            content: comment.content,
+            created_at: comment.created_at,
+            user: {
+              id: (comment.profiles as any).id,
+              username: (comment.profiles as any).username,
+              avatar_url: (comment.profiles as any).avatar_url,
+            },
+            likes_count: count || 0,
+            has_liked: false
+          };
+        })
+      );
       
       // If user is logged in, check which comments they've liked
       if (user) {
@@ -83,14 +114,18 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
         if (!likesError && userLikes) {
           const likedCommentIds = userLikes.map(like => like.comment_id);
           
-          commentsData = commentsData.map(comment => ({
+          const commentsWithLikeStatus = commentsWithLikes.map(comment => ({
             ...comment,
             has_liked: likedCommentIds.includes(comment.id)
           }));
+          
+          setComments(commentsWithLikeStatus);
+        } else {
+          setComments(commentsWithLikes);
         }
+      } else {
+        setComments(commentsWithLikes);
       }
-      
-      setComments(commentsData);
     } catch (error: any) {
       console.error('Error fetching comments:', error);
       toast.error('Erro ao carregar comentários', {
@@ -115,7 +150,8 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
         const { error } = await supabase
           .from('comment_likes')
           .delete()
-          .match({ user_id: user.id, comment_id: commentId });
+          .eq('user_id', user.id)
+          .eq('comment_id', commentId);
           
         if (error) throw error;
         
@@ -129,7 +165,10 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
         // Add like
         const { error } = await supabase
           .from('comment_likes')
-          .insert({ user_id: user.id, comment_id: commentId });
+          .insert({ 
+            user_id: user.id,
+            comment_id: commentId
+          });
           
         if (error) throw error;
         

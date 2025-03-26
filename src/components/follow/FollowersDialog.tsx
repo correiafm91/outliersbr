@@ -1,27 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { User, UserCheck, UserX } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Link } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import FollowButton from './FollowButton';
-import { toast } from 'sonner';
-
-interface UserProfile {
-  id: string;
-  username: string;
-  full_name: string | null;
-  avatar_url: string | null;
-}
 
 interface FollowersDialogProps {
   userId: string;
@@ -34,192 +21,188 @@ const FollowersDialog: React.FC<FollowersDialogProps> = ({
   userId, 
   username,
   followersCount,
-  followingCount
+  followingCount 
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const { user } = useAuth();
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [following, setFollowing] = useState<any[]>([]);
+  const [isLoadingFollowers, setIsLoadingFollowers] = useState(false);
+  const [isLoadingFollowing, setIsLoadingFollowing] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('followers');
-  const [followers, setFollowers] = useState<UserProfile[]>([]);
-  const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isDialogOpen) {
       if (activeTab === 'followers') {
         fetchFollowers();
       } else {
         fetchFollowing();
       }
     }
-  }, [isOpen, activeTab]);
+  }, [isDialogOpen, activeTab, userId]);
 
   const fetchFollowers = async () => {
+    if (isLoadingFollowers) return;
+    
     try {
-      setIsLoading(true);
+      setIsLoadingFollowers(true);
       
       const { data, error } = await supabase
         .from('follows')
         .select(`
           follower_id,
-          profiles!follows_follower_id_fkey (
+          profiles:follower_id (
             id,
             username,
-            full_name,
-            avatar_url
+            avatar_url,
+            full_name
           )
         `)
         .eq('following_id', userId);
-      
+        
       if (error) throw error;
       
-      // Extract profiles from the joined data
-      const followerProfiles = data
-        .map(item => {
-          // Add type check to ensure profiles is not null/undefined and has expected shape
-          if (item.profiles && typeof item.profiles === 'object' && 'id' in item.profiles) {
-            return item.profiles as UserProfile;
-          }
-          return null;
-        })
-        .filter((profile): profile is UserProfile => profile !== null);
-      
-      setFollowers(followerProfiles);
-    } catch (error: any) {
+      setFollowers(data || []);
+    } catch (error) {
       console.error('Error fetching followers:', error);
-      toast.error('Erro ao carregar seguidores', {
-        description: error.message
-      });
     } finally {
-      setIsLoading(false);
+      setIsLoadingFollowers(false);
     }
   };
 
   const fetchFollowing = async () => {
+    if (isLoadingFollowing) return;
+    
     try {
-      setIsLoading(true);
+      setIsLoadingFollowing(true);
       
       const { data, error } = await supabase
         .from('follows')
         .select(`
           following_id,
-          profiles!follows_following_id_fkey (
+          profiles:following_id (
             id,
             username,
-            full_name,
-            avatar_url
+            avatar_url,
+            full_name
           )
         `)
         .eq('follower_id', userId);
-      
+        
       if (error) throw error;
       
-      // Extract profiles from the joined data
-      const followingProfiles = data
-        .map(item => {
-          // Add type check to ensure profiles is not null/undefined and has expected shape
-          if (item.profiles && typeof item.profiles === 'object' && 'id' in item.profiles) {
-            return item.profiles as UserProfile;
-          }
-          return null;
-        })
-        .filter((profile): profile is UserProfile => profile !== null);
-      
-      setFollowing(followingProfiles);
-    } catch (error: any) {
+      setFollowing(data || []);
+    } catch (error) {
       console.error('Error fetching following:', error);
-      toast.error('Erro ao carregar usuários seguidos', {
-        description: error.message
-      });
     } finally {
-      setIsLoading(false);
+      setIsLoadingFollowing(false);
     }
   };
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <div className="flex gap-4 text-sm cursor-pointer" onClick={() => setIsOpen(true)}>
+    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <div className="flex gap-2 text-sm cursor-pointer" onClick={() => setIsDialogOpen(true)}>
         <span><strong>{followersCount}</strong> seguidores</span>
         <span><strong>{followingCount}</strong> seguindo</span>
       </div>
       
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-center">@{username}</DialogTitle>
+          <DialogTitle>Conexões de @{username}</DialogTitle>
         </DialogHeader>
         
-        <Tabs defaultValue="followers" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="followers">
-              <User className="h-4 w-4 mr-2" />
+        <Tabs defaultValue="followers" value={activeTab} onValueChange={handleTabChange}>
+          <TabsList className="w-full mb-4">
+            <TabsTrigger value="followers" className="flex-1">
               Seguidores ({followersCount})
             </TabsTrigger>
-            <TabsTrigger value="following">
-              <UserCheck className="h-4 w-4 mr-2" />
+            <TabsTrigger value="following" className="flex-1">
               Seguindo ({followingCount})
             </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="followers" className="pt-4">
-            {isLoading ? (
+          <TabsContent value="followers">
+            {isLoadingFollowers ? (
               <div className="flex justify-center py-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : followers.length > 0 ? (
-              <div className="space-y-4 max-h-[400px] overflow-y-auto px-1">
-                {followers.map(follower => (
-                  <div key={follower.id} className="flex items-center justify-between">
-                    <Link to={`/profile/${follower.username}`} className="flex items-center gap-3 flex-1" onClick={() => setIsOpen(false)}>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {followers.map(item => (
+                  <div key={item.follower_id} className="flex items-center justify-between">
+                    <Link 
+                      to={`/profile/${item.profiles?.username || 'user'}`} 
+                      className="flex items-center gap-3"
+                    >
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={follower.avatar_url || undefined} alt={follower.username} />
-                        <AvatarFallback className="bg-primary/20">
-                          {follower.username[0]?.toUpperCase() || 'U'}
+                        <AvatarImage src={item.profiles?.avatar_url || undefined} alt={item.profiles?.username || 'User'} />
+                        <AvatarFallback>
+                          {item.profiles?.username?.[0]?.toUpperCase() || 'U'}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium text-sm">{follower.full_name || follower.username}</p>
-                        <p className="text-xs text-muted-foreground">@{follower.username}</p>
+                        <p className="font-medium">{item.profiles?.full_name || item.profiles?.username}</p>
+                        <p className="text-sm text-muted-foreground">@{item.profiles?.username}</p>
                       </div>
                     </Link>
-                    <FollowButton targetUserId={follower.id} size="sm" />
+                    
+                    {user && item.follower_id !== user.id && (
+                      <FollowButton 
+                        targetUserId={item.follower_id} 
+                        size="sm"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <UserX className="h-10 w-10 mx-auto text-muted-foreground" />
-                <p className="mt-2 text-muted-foreground">Nenhum seguidor ainda</p>
+              <div className="text-center py-8 text-muted-foreground">
+                Nenhum seguidor ainda
               </div>
             )}
           </TabsContent>
           
-          <TabsContent value="following" className="pt-4">
-            {isLoading ? (
+          <TabsContent value="following">
+            {isLoadingFollowing ? (
               <div className="flex justify-center py-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : following.length > 0 ? (
-              <div className="space-y-4 max-h-[400px] overflow-y-auto px-1">
-                {following.map(follow => (
-                  <div key={follow.id} className="flex items-center justify-between">
-                    <Link to={`/profile/${follow.username}`} className="flex items-center gap-3 flex-1" onClick={() => setIsOpen(false)}>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {following.map(item => (
+                  <div key={item.following_id} className="flex items-center justify-between">
+                    <Link 
+                      to={`/profile/${item.profiles?.username || 'user'}`} 
+                      className="flex items-center gap-3"
+                    >
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={follow.avatar_url || undefined} alt={follow.username} />
-                        <AvatarFallback className="bg-primary/20">
-                          {follow.username[0]?.toUpperCase() || 'U'}
+                        <AvatarImage src={item.profiles?.avatar_url || undefined} alt={item.profiles?.username || 'User'} />
+                        <AvatarFallback>
+                          {item.profiles?.username?.[0]?.toUpperCase() || 'U'}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium text-sm">{follow.full_name || follow.username}</p>
-                        <p className="text-xs text-muted-foreground">@{follow.username}</p>
+                        <p className="font-medium">{item.profiles?.full_name || item.profiles?.username}</p>
+                        <p className="text-sm text-muted-foreground">@{item.profiles?.username}</p>
                       </div>
                     </Link>
-                    <FollowButton targetUserId={follow.id} size="sm" />
+                    
+                    {user && item.following_id !== user.id && (
+                      <FollowButton 
+                        targetUserId={item.following_id} 
+                        size="sm"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <UserX className="h-10 w-10 mx-auto text-muted-foreground" />
-                <p className="mt-2 text-muted-foreground">Não está seguindo ninguém ainda</p>
+              <div className="text-center py-8 text-muted-foreground">
+                Não está seguindo ninguém ainda
               </div>
             )}
           </TabsContent>

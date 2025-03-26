@@ -1,104 +1,62 @@
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
-import { AuthProvider } from "@/hooks/useAuth";
-import { lazy, Suspense, StrictMode } from "react";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import "@/index.css";
+import React, { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { TooltipProvider } from '@radix-ui/react-tooltip';
+import { Toaster } from '@/components/ui/sonner';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AuthProvider } from '@/hooks/useAuth';
+import { AnimatePresence } from 'framer-motion';
+import VersionBadge from '@/components/layout/VersionBadge';
 
-// Lazy load non-critical pages to improve initial load time
-const Profile = lazy(() => import("./pages/Profile"));
-const Create = lazy(() => import("./pages/Create"));
-const Explore = lazy(() => import("./pages/Explore"));
-const Notifications = lazy(() => import("./pages/Notifications"));
+// Lazy loaded components
+const Index = lazy(() => import('@/pages/Index'));
+const Explore = lazy(() => import('@/pages/Explore'));
+const Create = lazy(() => import('@/pages/Create'));
+const Profile = lazy(() => import('@/pages/Profile'));
+const Notifications = lazy(() => import('@/pages/Notifications'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 
-// Configure QueryClient with better defaults for performance
+// Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      staleTime: 60 * 1000, // 1 minute
-      gcTime: 5 * 60 * 1000, // 5 minutes (replace cacheTime which is deprecated)
+      retry: 2,
+      staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
-      refetchOnMount: true,
-      // Add timeout to avoid infinite loading
-      refetchInterval: false, 
-      refetchIntervalInBackground: false,
     },
   },
 });
 
-// Version number
-const APP_VERSION = "1.0.0";
-
-// Loading fallback for lazy-loaded components
-const PageLoader = () => (
-  <div className="flex items-center justify-center min-h-screen p-4 bg-black">
-    <div className="flex flex-col items-center">
-      <img 
-        src="https://i.postimg.cc/8z1WJxkR/High-resolution-stock-photo-A-professional-commercial-image-showcasing-a-grey-letter-O-logo-agains.png" 
-        alt="Outliers Logo" 
-        className="h-16 w-16 mb-4 animate-pulse"
-      />
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-    </div>
-  </div>
-);
-
-const App = () => (
-  <StrictMode>
+function App() {
+  return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <div className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border py-1 text-center text-xs text-muted-foreground">
-            Versão {APP_VERSION}
-          </div>
           <BrowserRouter>
-            <AnimatePresence mode="wait">
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/explore" element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Explore />
-                  </Suspense>
-                } />
-                <Route path="/create" element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Create />
-                  </Suspense>
-                } />
-                <Route path="/notifications" element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Notifications />
-                  </Suspense>
-                } />
-                <Route path="/profile" element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Profile />
-                  </Suspense>
-                } />
-                <Route path="/profile/:username" element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Profile />
-                  </Suspense>
-                } />
-                <Route path="/post/:id" element={<Index />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+            <VersionBadge />
+            <AnimatePresence mode="wait" initial={false}>
+              <Suspense fallback={
+                <div className="flex items-center justify-center h-screen">
+                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              }>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/explore" element={<Explore />} />
+                  <Route path="/create" element={<Create />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile/:username" element={<Profile />} />
+                  <Route path="/notifications" element={<Notifications />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
             </AnimatePresence>
+            <Toaster position="top-center" />
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
-  </StrictMode>
-);
+  );
+}
 
 export default App;
