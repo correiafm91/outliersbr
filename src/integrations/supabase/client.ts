@@ -9,28 +9,79 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+  global: {
+    fetch: (...args) => {
+      // Add timeout logic for better error handling
+      const [resource, config] = args;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      return fetch(resource, {
+        ...config,
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
+    }
+  }
+});
 
-// Ensure we have a comment_likes table
-const createCommentLikesTableIfNotExists = async () => {
+// Initialize tables only once
+const tablesInitialized = {
+  commentLikes: false,
+  notifications: false
+};
+
+// Check for comment_likes table
+export const ensureCommentLikesTable = async () => {
+  if (tablesInitialized.commentLikes) return;
+  
   try {
-    const { error } = await supabase.rpc('create_comment_likes_if_not_exists');
-    if (error) console.error('Error creating comment_likes table:', error);
+    console.log('Checking for comment_likes table...');
+    const { count, error } = await supabase
+      .from('comment_likes')
+      .select('*', { count: 'exact', head: true })
+      .limit(1);
+      
+    if (error && error.code === '42P01') { // Table doesn't exist
+      console.log('Creating comment_likes table...');
+      await supabase.rpc('create_comment_likes_if_not_exists');
+    }
+    
+    tablesInitialized.commentLikes = true;
+    console.log('comment_likes table is ready');
   } catch (error) {
-    console.error('Failed to create comment_likes table:', error);
+    console.error('Failed to check/create comment_likes table:', error);
   }
 };
 
-// Ensure we have a notifications table
-const createNotificationsTableIfNotExists = async () => {
+// Check for notifications table
+export const ensureNotificationsTable = async () => {
+  if (tablesInitialized.notifications) return;
+  
   try {
-    const { error } = await supabase.rpc('create_notifications_if_not_exists');
-    if (error) console.error('Error creating notifications table:', error);
+    console.log('Checking for notifications table...');
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .limit(1);
+      
+    if (error && error.code === '42P01') { // Table doesn't exist
+      console.log('Creating notifications table...');
+      await supabase.rpc('create_notifications_if_not_exists');
+    }
+    
+    tablesInitialized.notifications = true;
+    console.log('notifications table is ready');
   } catch (error) {
-    console.error('Failed to create notifications table:', error);
+    console.error('Failed to check/create notifications table:', error);
   }
 };
 
 // Initialize required tables
-createCommentLikesTableIfNotExists();
-createNotificationsTableIfNotExists();
+ensureCommentLikesTable();
+ensureNotificationsTable();

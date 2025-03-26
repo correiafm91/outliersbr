@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SendHorizonal, Search, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { createNotification } from '@/integrations/supabase/functions';
 
 interface CommentFormProps {
   postId: string;
@@ -21,8 +22,30 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId, onCommentAdded }) => 
   const [isTypingMention, setIsTypingMention] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionResults, setMentionResults] = useState<any[]>([]);
+  const [postAuthorId, setPostAuthorId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mentionPosition, setMentionPosition] = useState({ start: 0, end: 0 });
+
+  // Fetch post author ID for notifications
+  useEffect(() => {
+    const fetchPostAuthor = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('user_id')
+          .eq('id', postId)
+          .single();
+          
+        if (!error && data) {
+          setPostAuthorId(data.user_id);
+        }
+      } catch (error) {
+        console.error('Error fetching post author:', error);
+      }
+    };
+    
+    fetchPostAuthor();
+  }, [postId]);
 
   // Handle typing in the comment box
   const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -54,7 +77,7 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId, onCommentAdded }) => 
     }
   };
 
-  // Search for users matching the mention query
+  // Search for users matching the mention query with debounce
   const searchUsers = async (query: string) => {
     if (query.length < 1) {
       setMentionResults([]);
@@ -132,15 +155,6 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId, onCommentAdded }) => 
       const mentions = extractMentions(content);
       
       if (mentions.length > 0) {
-        // Get post details for the notification
-        const { data: postData, error: postError } = await supabase
-          .from('posts')
-          .select('user_id')
-          .eq('id', postId)
-          .single();
-        
-        if (postError) throw postError;
-        
         // Get user IDs for the mentioned usernames
         const { data: mentionedUsers, error: mentionError } = await supabase
           .from('profiles')
@@ -151,42 +165,31 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId, onCommentAdded }) => 
         
         if (mentionedUsers && mentionedUsers.length > 0) {
           // Create notifications for each mentioned user
-          const notificationsToInsert = mentionedUsers
+          const notificationsToSend = mentionedUsers
             .filter(mentionedUser => mentionedUser.id !== user.id) // Don't notify yourself
-            .map(mentionedUser => ({
-              type: 'mention',
-              user_id: mentionedUser.id,
-              actor_id: user.id,
-              post_id: postId,
-              comment_id: commentData.id,
-              read: false
-            }));
-          
-          if (notificationsToInsert.length > 0) {
-            // Insert all notifications
-            const { error: notifyError } = await supabase
-              .from('notifications')
-              .insert(notificationsToInsert);
-              
-            if (notifyError) console.error('Error creating mention notifications:', notifyError);
-          }
-        }
-        
-        // Also notify the post owner about the comment (if not the same as commenter)
-        if (postData && postData.user_id !== user.id) {
-          const { error: ownerNotifyError } = await supabase
-            .from('notifications')
-            .insert({
-              type: 'comment',
-              user_id: postData.user_id,
-              actor_id: user.id,
-              post_id: postId,
-              comment_id: commentData.id,
-              read: false
+            .map(async (mentionedUser) => {
+              await createNotification(
+                'mention',
+                mentionedUser.id,
+                user.id,
+                postId,
+                commentData.id
+              );
             });
-            
-          if (ownerNotifyError) console.error('Error notifying post owner:', ownerNotifyError);
+          
+          await Promise.all(notificationsToSend);
         }
+      }
+      
+      // 3. Notify post owner about the comment (if different from commenter)
+      if (postAuthorId && postAuthorId !== user.id) {
+        await createNotification(
+          'comment',
+          postAuthorId,
+          user.id,
+          postId,
+          commentData.id
+        );
       }
       
       // Clear form and update UI

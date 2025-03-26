@@ -1,8 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Post from './Post';
 import { motion } from 'framer-motion';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Loader2, RefreshCcw, AlertCircle } from 'lucide-react';
@@ -36,12 +35,16 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Set a maximum retry limit
+  const MAX_RETRIES = 3;
 
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 2000); // Reduced from 3000 to 2000 ms for faster feedback
+      }, 1500); // Reduced from 2000 to 1500 ms for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -50,22 +53,29 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
   }, [isLoading]);
 
   const fetchPosts = useCallback(async () => {
+    if (retryCount >= MAX_RETRIES) {
+      setLoadError("Não foi possível carregar os dados após várias tentativas. Por favor, tente novamente mais tarde.");
+      setIsLoading(false);
+      if (onLoadStateChange) onLoadStateChange(true);
+      return;
+    }
+
     try {
       console.log('FeedList: Starting to fetch posts');
       setIsLoading(true);
       setLoadError(null);
       if (onLoadStateChange) onLoadStateChange(false);
 
-      // Fetch posts with profile data with a timeout
-      const fetchPromise = getPostsWithProfiles();
-      
-      // Set a timeout for the fetch operation
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 3000); // Reduced from 5000 to 3000
+      // Set up timeout handling
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 10000);
       });
       
       // Race the fetch against the timeout
-      const postsData = await Promise.race([fetchPromise, timeoutPromise]) as PostType[] | null;
+      const postsData = await Promise.race([
+        getPostsWithProfiles(),
+        timeoutPromise
+      ]) as PostType[] | null;
       
       console.log('FeedList: Received posts data:', { 
         postCount: postsData?.length || 0,
@@ -95,24 +105,39 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       }
 
       setPosts(enhancedPosts);
+      setRetryCount(0); // Reset retry count on success
       console.log('FeedList: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching posts:', error);
       setLoadError(`Erro ao carregar publicações: ${error.message}`);
-      toast.error('Erro ao carregar publicações', {
-        description: error.message,
-      });
+      
+      // Increment retry count and try again after a delay
+      setRetryCount(prev => prev + 1);
+      
+      if (retryCount < MAX_RETRIES - 1) {
+        // Wait longer between retries
+        const retryDelay = 1000 * (retryCount + 1);
+        setTimeout(() => {
+          console.log(`Retrying fetch (attempt ${retryCount + 1})`);
+          setRefreshKey(prev => prev + 1);
+        }, retryDelay);
+      } else {
+        toast.error('Não foi possível carregar as publicações', {
+          description: 'Tente recarregar a página',
+        });
+      }
     } finally {
       setIsLoading(false);
       if (onLoadStateChange) onLoadStateChange(true);
       console.log('FeedList: Loading state set to false');
     }
-  }, [user, onLoadStateChange]);
+  }, [user, onLoadStateChange, retryCount]);
 
   // Trigger refresh of posts
-  const refreshPosts = () => {
+  const refreshPosts = useCallback(() => {
+    setRetryCount(0); // Reset retry count on manual refresh
     setRefreshKey(prev => prev + 1);
-  };
+  }, []);
 
   useEffect(() => {
     fetchPosts();
@@ -122,6 +147,43 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     setShowLoadingHelp(false);
     refreshPosts();
   };
+
+  // Memoize post components to reduce re-renders
+  const postComponents = useMemo(() => {
+    if (posts.length === 0) return null;
+    
+    return posts.map((post, index) => (
+      <motion.div
+        key={post.id}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: Math.min(index * 0.05, 0.5) }} // Cap the delay for better performance
+      >
+        <Post 
+          id={post.id}
+          author={{
+            name: post.profiles.full_name || post.profiles.username,
+            username: post.profiles.username,
+            avatar: post.profiles.avatar_url || 'https://via.placeholder.com/150',
+            verified: post.profiles.username?.toLowerCase() === 'outliersofc'
+          }}
+          content={post.content}
+          images={post.images || []}
+          timestamp={new Date(post.created_at).toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
+          likes={post.likes}
+          comments={post.comments}
+          hasLiked={post.has_liked}
+          onRefresh={refreshPosts}
+        />
+      </motion.div>
+    ));
+  }, [posts, refreshPosts]);
 
   if (isLoading) {
     return (
@@ -154,7 +216,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     );
   }
 
-  if (posts.length === 0) {
+  if (!posts || posts.length === 0) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
@@ -178,37 +240,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
       className="w-full max-w-xl mx-auto"
     >
       <div className="space-y-4">
-        {posts.map((post, index) => (
-          <motion.div
-            key={post.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-          >
-            <Post 
-              id={post.id}
-              author={{
-                name: post.profiles.full_name || post.profiles.username,
-                username: post.profiles.username,
-                avatar: post.profiles.avatar_url || 'https://via.placeholder.com/150',
-                verified: post.profiles.username?.toLowerCase() === 'outliersofc'
-              }}
-              content={post.content}
-              images={post.images || []}
-              timestamp={new Date(post.created_at).toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
-              likes={post.likes}
-              comments={post.comments}
-              hasLiked={post.has_liked}
-              onRefresh={refreshPosts}
-            />
-          </motion.div>
-        ))}
+        {postComponents}
       </div>
     </motion.div>
   );

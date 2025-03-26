@@ -1,13 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Heart, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { getUserCommentLikes, createNotification } from '@/integrations/supabase/functions';
 
 interface CommentProps {
   id: string;
@@ -24,21 +25,33 @@ interface CommentProps {
 
 interface CommentListProps {
   postId: string;
+  refreshComments?: boolean;
 }
 
-const CommentList: React.FC<CommentListProps> = ({ postId }) => {
+const CommentList: React.FC<CommentListProps> = ({ postId, refreshComments }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [comments, setComments] = useState<CommentProps[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Refresh comments when props change
+  useEffect(() => {
+    if (refreshComments) {
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [refreshComments]);
 
   useEffect(() => {
     fetchComments();
-  }, [postId]);
+  }, [postId, refreshKey]);
 
   const fetchComments = async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       
       // First get the comments with profile data
       const { data: commentsData, error: commentsError } = await supabase
@@ -47,6 +60,7 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
           id,
           content,
           created_at,
+          user_id,
           profiles:user_id (
             id,
             username,
@@ -64,70 +78,50 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
         return;
       }
       
-      // For each comment, get the likes count through a separate query
-      const commentsWithLikes = await Promise.all(
-        commentsData.map(async (comment) => {
-          // Count likes for this comment
-          const { count, error: likesCountError } = await supabase
+      // Extract comment IDs for batch operations
+      const commentIds = commentsData.map(comment => comment.id);
+      
+      // Get likes count for all comments in one batch operation
+      const likesCountsPromise = Promise.all(
+        commentIds.map(async (commentId) => {
+          const { count, error } = await supabase
             .from('comment_likes')
             .select('*', { count: 'exact', head: true })
-            .eq('comment_id', comment.id);
+            .eq('comment_id', commentId);
             
-          if (likesCountError) {
-            console.error('Error counting comment likes:', likesCountError);
-            return {
-              id: comment.id,
-              content: comment.content,
-              created_at: comment.created_at,
-              user: {
-                id: (comment.profiles as any).id,
-                username: (comment.profiles as any).username,
-                avatar_url: (comment.profiles as any).avatar_url,
-              },
-              likes_count: 0,
-              has_liked: false
-            };
-          }
-          
-          return {
-            id: comment.id,
-            content: comment.content,
-            created_at: comment.created_at,
-            user: {
-              id: (comment.profiles as any).id,
-              username: (comment.profiles as any).username,
-              avatar_url: (comment.profiles as any).avatar_url,
-            },
-            likes_count: count || 0,
-            has_liked: false
-          };
+          return error ? 0 : (count || 0);
         })
       );
       
-      // If user is logged in, check which comments they've liked
-      if (user) {
-        const { data: userLikes, error: likesError } = await supabase
-          .from('comment_likes')
-          .select('comment_id')
-          .eq('user_id', user.id);
-          
-        if (!likesError && userLikes) {
-          const likedCommentIds = userLikes.map(like => like.comment_id);
-          
-          const commentsWithLikeStatus = commentsWithLikes.map(comment => ({
-            ...comment,
-            has_liked: likedCommentIds.includes(comment.id)
-          }));
-          
-          setComments(commentsWithLikeStatus);
-        } else {
-          setComments(commentsWithLikes);
-        }
-      } else {
-        setComments(commentsWithLikes);
-      }
+      // If user is logged in, get their likes in one batch operation
+      const userLikesPromise = user 
+        ? getUserCommentLikes(user.id, commentIds)
+        : Promise.resolve([]);
+      
+      // Wait for both promises to resolve
+      const [likesCounts, userLikedCommentIds] = await Promise.all([
+        likesCountsPromise,
+        userLikesPromise
+      ]);
+      
+      // Map the data into the required format
+      const formattedComments = commentsData.map((comment, index) => ({
+        id: comment.id,
+        content: comment.content,
+        created_at: comment.created_at,
+        user: {
+          id: comment.user_id,
+          username: (comment.profiles as any).username,
+          avatar_url: (comment.profiles as any).avatar_url,
+        },
+        likes_count: likesCounts[index],
+        has_liked: user ? userLikedCommentIds.includes(comment.id) : false
+      }));
+      
+      setComments(formattedComments);
     } catch (error: any) {
       console.error('Error fetching comments:', error);
+      setLoadError(error.message);
       toast.error('Erro ao carregar comentários', {
         description: error.message
       });
@@ -136,7 +130,7 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     }
   };
 
-  const handleLikeComment = async (commentId: string, isLiked: boolean) => {
+  const handleLikeComment = async (commentId: string, isLiked: boolean, authorId: string) => {
     if (!user) {
       toast.error('É necessário fazer login para curtir comentários');
       return;
@@ -172,6 +166,17 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
           
         if (error) throw error;
         
+        // Create notification for the comment author
+        if (authorId !== user.id) {
+          await createNotification(
+            'comment_like',
+            authorId,
+            user.id,
+            postId,
+            commentId
+          );
+        }
+        
         // Update local state
         setComments(prev => prev.map(comment => 
           comment.id === commentId 
@@ -189,21 +194,9 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-4">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (comments.length === 0) {
-    return (
-      <div className="text-center py-4 text-muted-foreground">
-        Ainda não há comentários. Seja o primeiro a comentar!
-      </div>
-    );
-  }
+  const navigateToProfile = (username: string) => {
+    navigate(`/profile/${username}`);
+  };
 
   const formatCommentDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -238,22 +231,61 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     });
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-center py-4 text-muted-foreground">
+        <p>Erro ao carregar comentários.</p>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setRefreshKey(prev => prev + 1)}
+          className="mt-2"
+        >
+          Tentar novamente
+        </Button>
+      </div>
+    );
+  }
+
+  if (comments.length === 0) {
+    return (
+      <div className="text-center py-4 text-muted-foreground">
+        Ainda não há comentários. Seja o primeiro a comentar!
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 mt-4">
       {comments.map(comment => (
         <div key={comment.id} className="border-t pt-4">
           <div className="flex gap-3">
-            <Link to={`/profile/${comment.user.username}`} className="block">
+            <div className="cursor-pointer" onClick={() => navigateToProfile(comment.user.username)}>
               <Avatar className="h-8 w-8">
-                <AvatarImage src={comment.user.avatar_url || undefined} alt={comment.user.username} />
+                <AvatarImage 
+                  src={comment.user.avatar_url || undefined} 
+                  alt={comment.user.username} 
+                  className="object-cover" 
+                />
                 <AvatarFallback>{comment.user.username[0]?.toUpperCase() || "U"}</AvatarFallback>
               </Avatar>
-            </Link>
+            </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <Link to={`/profile/${comment.user.username}`} className="font-medium text-sm hover:underline">
+                <div 
+                  className="font-medium text-sm hover:underline cursor-pointer"
+                  onClick={() => navigateToProfile(comment.user.username)}
+                >
                   @{comment.user.username}
-                </Link>
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {formatCommentDate(comment.created_at)}
                 </span>
@@ -269,7 +301,7 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
                     "h-8 px-2 text-xs rounded-full",
                     comment.has_liked ? "text-rose-500" : "text-muted-foreground"
                   )}
-                  onClick={() => handleLikeComment(comment.id, comment.has_liked)}
+                  onClick={() => handleLikeComment(comment.id, comment.has_liked, comment.user.id)}
                   disabled={likeLoadingId === comment.id}
                 >
                   {likeLoadingId === comment.id ? (
