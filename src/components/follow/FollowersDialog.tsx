@@ -59,7 +59,13 @@ const FollowersDialog: React.FC<FollowersDialogProps> = ({
         if (error) throw error;
         
         // Extract profile data from the nested structure
-        const followerProfiles = data.map(item => item.profiles) as UserProfile[];
+        const followerProfiles: UserProfile[] = [];
+        data.forEach(item => {
+          if (item.profiles) {
+            followerProfiles.push(item.profiles as UserProfile);
+          }
+        });
+        
         setFollowers(followerProfiles);
       } else {
         // Get users this user follows
@@ -76,7 +82,13 @@ const FollowersDialog: React.FC<FollowersDialogProps> = ({
         if (error) throw error;
         
         // Extract profile data from the nested structure
-        const followingProfiles = data.map(item => item.profiles) as UserProfile[];
+        const followingProfiles: UserProfile[] = [];
+        data.forEach(item => {
+          if (item.profiles) {
+            followingProfiles.push(item.profiles as UserProfile);
+          }
+        });
+        
         setFollowing(followingProfiles);
       }
     } catch (error) {

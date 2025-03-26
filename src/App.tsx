@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { AuthProvider } from "@/hooks/useAuth";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, StrictMode } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import "@/index.css";
@@ -23,7 +23,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 60 * 1000, // 1 minute
-      cacheTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 5 * 60 * 1000, // 5 minutes (replace cacheTime which is deprecated)
       refetchOnWindowFocus: false,
       refetchOnMount: true,
     },
@@ -45,49 +45,51 @@ const PageLoader = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AnimatePresence mode="wait">
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/explore" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Explore />
-                </Suspense>
-              } />
-              <Route path="/create" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Create />
-                </Suspense>
-              } />
-              <Route path="/notifications" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Notifications />
-                </Suspense>
-              } />
-              <Route path="/profile" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Profile />
-                </Suspense>
-              } />
-              <Route path="/profile/:username" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Profile />
-                </Suspense>
-              } />
-              <Route path="/post/:id" element={<Index />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </AnimatePresence>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AnimatePresence mode="wait">
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/explore" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Explore />
+                  </Suspense>
+                } />
+                <Route path="/create" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Create />
+                  </Suspense>
+                } />
+                <Route path="/notifications" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Notifications />
+                  </Suspense>
+                } />
+                <Route path="/profile" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Profile />
+                  </Suspense>
+                } />
+                <Route path="/profile/:username" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Profile />
+                  </Suspense>
+                } />
+                <Route path="/post/:id" element={<Index />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </AnimatePresence>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </StrictMode>
 );
 
 export default App;

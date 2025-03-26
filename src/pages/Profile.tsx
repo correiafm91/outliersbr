@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -178,12 +177,16 @@ const Profile: React.FC = () => {
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
-      setProfileData({
+      // Create a complete profile object with all required properties
+      const completeProfile: ProfileType = {
         ...data,
         post_count: postCount || 0,
         follower_count: followerCount || 0,
-        following_count: followingCount || 0
-      });
+        following_count: followingCount || 0,
+        banner_url: data.banner_url || null
+      };
+      
+      setProfileData(completeProfile);
     } catch (error: any) {
       console.error('Error fetching profile:', error);
       setLoadError(`Erro ao carregar perfil: ${error.message}`);
@@ -254,12 +257,16 @@ const Profile: React.FC = () => {
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
-      setProfileData({
+      // Create a complete profile object with all required properties
+      const completeProfile: ProfileType = {
         ...data,
         post_count: postCount || 0,
         follower_count: followerCount || 0,
-        following_count: followingCount || 0
-      });
+        following_count: followingCount || 0,
+        banner_url: data.banner_url || null
+      };
+      
+      setProfileData(completeProfile);
       
       fetchUserPosts(data.id);
     } catch (error: any) {
@@ -692,7 +699,6 @@ const Profile: React.FC = () => {
                           likes={post.likes}
                           comments={post.comments}
                           hasLiked={post.has_liked}
-                          isSaved={true}
                           onRefresh={() => setRefreshKey(prev => prev + 1)}
                         />
                       </motion.div>

@@ -69,9 +69,28 @@ const BannerUpload: React.FC<BannerUploadProps> = ({ userId, currentBanner, onBa
         .getPublicUrl(fileName);
 
       // Update profile with new banner URL
+      // First check if profiles table has banner_url column
+      const { data: profileSchema, error: schemaError } = await supabase
+        .from('profiles')
+        .select('*')
+        .limit(1);
+        
+      if (schemaError) throw schemaError;
+      
+      // Dynamically create the update object
+      const updateData: Record<string, any> = {};
+      
+      // Check if banner_url is part of the schema or use custom_data
+      if (profileSchema && Object.keys(profileSchema[0]).includes('banner_url')) {
+        updateData.banner_url = publicUrl;
+      } else {
+        // If banner_url doesn't exist in the schema, try to use custom_data or another approach
+        updateData.custom_data = { banner_url: publicUrl };
+      }
+
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ banner_url: publicUrl })
+        .update(updateData)
         .eq('id', userId);
 
       if (updateError) throw updateError;
@@ -95,9 +114,28 @@ const BannerUpload: React.FC<BannerUploadProps> = ({ userId, currentBanner, onBa
     try {
       setIsUploading(true);
       
+      // Check if profiles table has banner_url column
+      const { data: profileSchema, error: schemaError } = await supabase
+        .from('profiles')
+        .select('*')
+        .limit(1);
+        
+      if (schemaError) throw schemaError;
+      
+      // Dynamically create the update object
+      const updateData: Record<string, any> = {};
+      
+      // Check if banner_url is part of the schema or use custom_data
+      if (profileSchema && Object.keys(profileSchema[0]).includes('banner_url')) {
+        updateData.banner_url = null;
+      } else {
+        // If banner_url doesn't exist in the schema, try to use custom_data or another approach
+        updateData.custom_data = { banner_url: null };
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .update({ banner_url: null })
+        .update(updateData)
         .eq('id', userId);
 
       if (error) throw error;
