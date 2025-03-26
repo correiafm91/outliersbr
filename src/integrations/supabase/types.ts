@@ -54,27 +54,6 @@ export type Database = {
           },
         ]
       }
-      follows: {
-        Row: {
-          created_at: string
-          follower_id: string
-          following_id: string
-          id: string
-        }
-        Insert: {
-          created_at?: string
-          follower_id: string
-          following_id: string
-          id?: string
-        }
-        Update: {
-          created_at?: string
-          follower_id?: string
-          following_id?: string
-          id?: string
-        }
-        Relationships: []
-      }
       likes: {
         Row: {
           created_at: string | null
@@ -178,35 +157,6 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: []
-      }
-      saved_posts: {
-        Row: {
-          created_at: string
-          id: string
-          post_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          post_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          post_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "saved_posts_post_id_fkey"
-            columns: ["post_id"]
-            isOneToOne: false
-            referencedRelation: "posts"
-            referencedColumns: ["id"]
-          },
-        ]
       }
     }
     Views: {

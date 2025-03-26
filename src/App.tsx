@@ -16,25 +16,16 @@ const Profile = lazy(() => import("./pages/Profile"));
 const Create = lazy(() => import("./pages/Create"));
 const Explore = lazy(() => import("./pages/Explore"));
 const Notifications = lazy(() => import("./pages/Notifications"));
-const UserProfilePage = lazy(() => import("./pages/UserProfile"));
-const FollowPage = lazy(() => import("./pages/Follow"));
-const SavedPosts = lazy(() => import("./pages/SavedPosts"));
-const Messages = lazy(() => import("./pages/Messages"));
 
-// Configure QueryClient with better defaults for performance and error handling
+// Configure QueryClient with better defaults for performance
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 30 * 1000, // 30 seconds (reduced from 60 seconds for more frequent updates)
-      gcTime: 5 * 60 * 1000, // 5 minutes (replacing deprecated cacheTime)
+      staleTime: 60 * 1000, // 1 minute
+      cacheTime: 5 * 60 * 1000, // 5 minutes
       refetchOnWindowFocus: false,
       refetchOnMount: true,
-      useErrorBoundary: false, // Don't use error boundary to prevent blank screens
-      onError: (error) => {
-        console.error('Query error:', error);
-        // We'll handle errors in components
-      },
     },
   },
 });
@@ -85,25 +76,10 @@ const App = () => (
               } />
               <Route path="/profile/:username" element={
                 <Suspense fallback={<PageLoader />}>
-                  <UserProfilePage />
-                </Suspense>
-              } />
-              <Route path="/follow/:type" element={
-                <Suspense fallback={<PageLoader />}>
-                  <FollowPage />
+                  <Profile />
                 </Suspense>
               } />
               <Route path="/post/:id" element={<Index />} />
-              <Route path="/saved" element={
-                <Suspense fallback={<PageLoader />}>
-                  <SavedPosts />
-                </Suspense>
-              } />
-              <Route path="/messages" element={
-                <Suspense fallback={<PageLoader />}>
-                  <Messages />
-                </Suspense>
-              } />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
