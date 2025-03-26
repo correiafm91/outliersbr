@@ -9,3 +9,27 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+// Ensure we have a comment_likes table
+const createCommentLikesTableIfNotExists = async () => {
+  try {
+    const { error } = await supabase.rpc('create_comment_likes_if_not_exists');
+    if (error) console.error('Error creating comment_likes table:', error);
+  } catch (error) {
+    console.error('Failed to create comment_likes table:', error);
+  }
+};
+
+// Ensure we have a notifications table
+const createNotificationsTableIfNotExists = async () => {
+  try {
+    const { error } = await supabase.rpc('create_notifications_if_not_exists');
+    if (error) console.error('Error creating notifications table:', error);
+  } catch (error) {
+    console.error('Failed to create notifications table:', error);
+  }
+};
+
+// Initialize required tables
+createCommentLikesTableIfNotExists();
+createNotificationsTableIfNotExists();

@@ -26,9 +26,15 @@ const queryClient = new QueryClient({
       gcTime: 5 * 60 * 1000, // 5 minutes (replace cacheTime which is deprecated)
       refetchOnWindowFocus: false,
       refetchOnMount: true,
+      // Add timeout to avoid infinite loading
+      refetchInterval: false, 
+      refetchIntervalInBackground: false,
     },
   },
 });
+
+// Version number
+const APP_VERSION = "1.0.0";
 
 // Loading fallback for lazy-loaded components
 const PageLoader = () => (
@@ -51,6 +57,9 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <div className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border py-1 text-center text-xs text-muted-foreground">
+            Versão {APP_VERSION}
+          </div>
           <BrowserRouter>
             <AnimatePresence mode="wait">
               <Routes>

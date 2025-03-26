@@ -8,6 +8,7 @@ type ProfileData = {
   username: string;
   bio: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   [key: string]: any;
 };
 
@@ -54,10 +55,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return null;
       }
 
-      setProfile(data);
-      // Check if profile has been completed (has bio or avatar)
-      setHasCompletedProfile(!!(data?.bio || data?.avatar_url));
-      return data;
+      // Ensure banner_url is included in the profile data
+      const profileWithBanner = {
+        ...data,
+        banner_url: data.banner_url || null
+      };
+
+      setProfile(profileWithBanner);
+      
+      // Check if profile has been completed (has username, bio, and avatar)
+      // The profile is considered complete if user has set an avatar
+      setHasCompletedProfile(!!(data?.avatar_url));
+      
+      return profileWithBanner;
     } catch (error) {
       console.error('Error in fetchProfile:', error);
       return null;

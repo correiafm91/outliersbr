@@ -1,25 +1,25 @@
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, MessageSquare, ThumbsUp, Clock, CheckCircle } from 'lucide-react';
-import CommentForm from './CommentForm';
-import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Heart, Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Link } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
-interface Comment {
+interface CommentProps {
   id: string;
   content: string;
   created_at: string;
-  profiles: {
+  user: {
+    id: string;
     username: string;
     avatar_url: string | null;
-    full_name: string | null;
   };
-  replies?: Comment[];
+  likes_count: number;
+  has_liked: boolean;
 }
 
 interface CommentListProps {
@@ -28,69 +28,71 @@ interface CommentListProps {
 
 const CommentList: React.FC<CommentListProps> = ({ postId }) => {
   const { user } = useAuth();
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [comments, setComments] = useState<CommentProps[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [showCommentForm, setShowCommentForm] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchComments();
+  }, [postId]);
 
   const fetchComments = async () => {
     try {
       setIsLoading(true);
       
-      // Get all comments for this post
-      const { data: commentsData, error: commentsError } = await supabase
+      let query = supabase
         .from('comments')
-        .select('*')
+        .select(`
+          id,
+          content,
+          created_at,
+          profiles:user_id (
+            id,
+            username,
+            avatar_url
+          ),
+          likes_count:comment_likes(count)
+        `)
         .eq('post_id', postId)
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
       
-      if (commentsError) throw commentsError;
-
-      if (!commentsData || commentsData.length === 0) {
-        setComments([]);
-        setIsLoading(false);
-        return;
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      let commentsData = data.map(item => ({
+        id: item.id,
+        content: item.content,
+        created_at: item.created_at,
+        user: {
+          id: (item.profiles as any).id,
+          username: (item.profiles as any).username,
+          avatar_url: (item.profiles as any).avatar_url,
+        },
+        likes_count: (item.likes_count as any) || 0,
+        has_liked: false
+      }));
+      
+      // If user is logged in, check which comments they've liked
+      if (user) {
+        const { data: userLikes, error: likesError } = await supabase
+          .from('comment_likes')
+          .select('comment_id')
+          .eq('user_id', user.id);
+          
+        if (!likesError && userLikes) {
+          const likedCommentIds = userLikes.map(like => like.comment_id);
+          
+          commentsData = commentsData.map(comment => ({
+            ...comment,
+            has_liked: likedCommentIds.includes(comment.id)
+          }));
+        }
       }
       
-      // Get all user IDs from comments to fetch their profiles
-      const userIds = [...new Set(commentsData.map(comment => comment.user_id))];
-      
-      // Fetch profiles for these users
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', userIds);
-        
-      if (profilesError) throw profilesError;
-      
-      // Create a map of user_id to profile for quick lookup
-      const profilesMap = (profilesData || []).reduce((acc, profile) => {
-        acc[profile.id] = profile;
-        return acc;
-      }, {} as Record<string, any>);
-      
-      // Combine comments with profile data
-      const processedComments = commentsData.map(comment => {
-        const profile = profilesMap[comment.user_id] || {
-          username: 'usuário',
-          avatar_url: null,
-          full_name: null
-        };
-        
-        return {
-          ...comment,
-          profiles: {
-            username: profile.username,
-            avatar_url: profile.avatar_url,
-            full_name: profile.full_name
-          }
-        } as Comment;
-      });
-      
-      setComments(processedComments);
+      setComments(commentsData);
     } catch (error: any) {
+      console.error('Error fetching comments:', error);
       toast.error('Erro ao carregar comentários', {
         description: error.message
       });
@@ -99,145 +101,149 @@ const CommentList: React.FC<CommentListProps> = ({ postId }) => {
     }
   };
 
-  const handleCommentAdded = () => {
-    setRefreshKey(prev => prev + 1);
-    setShowCommentForm(false);
-    setReplyingTo(null);
+  const handleLikeComment = async (commentId: string, isLiked: boolean) => {
+    if (!user) {
+      toast.error('É necessário fazer login para curtir comentários');
+      return;
+    }
+    
+    try {
+      setLikeLoadingId(commentId);
+      
+      if (isLiked) {
+        // Remove like
+        const { error } = await supabase
+          .from('comment_likes')
+          .delete()
+          .match({ user_id: user.id, comment_id: commentId });
+          
+        if (error) throw error;
+        
+        // Update local state
+        setComments(prev => prev.map(comment => 
+          comment.id === commentId 
+            ? { ...comment, has_liked: false, likes_count: Math.max(0, comment.likes_count - 1) }
+            : comment
+        ));
+      } else {
+        // Add like
+        const { error } = await supabase
+          .from('comment_likes')
+          .insert({ user_id: user.id, comment_id: commentId });
+          
+        if (error) throw error;
+        
+        // Update local state
+        setComments(prev => prev.map(comment => 
+          comment.id === commentId 
+            ? { ...comment, has_liked: true, likes_count: comment.likes_count + 1 }
+            : comment
+        ));
+      }
+    } catch (error: any) {
+      console.error('Error liking comment:', error);
+      toast.error('Erro ao curtir comentário', {
+        description: error.message
+      });
+    } finally {
+      setLikeLoadingId(null);
+    }
   };
-
-  const handleReply = (commentId: string) => {
-    setReplyingTo(commentId);
-    setShowCommentForm(true);
-  };
-
-  useEffect(() => {
-    fetchComments();
-  }, [postId, refreshKey]);
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
   if (comments.length === 0) {
     return (
-      <div className="text-center p-4">
-        <MessageSquare className="mx-auto h-8 w-8 text-muted-foreground opacity-50" />
-        <p className="mt-2 text-sm text-muted-foreground">Nenhum comentário ainda</p>
-        <Button 
-          variant="outline" 
-          className="mt-2" 
-          size="sm"
-          onClick={() => setShowCommentForm(!showCommentForm)}
-        >
-          Adicionar o primeiro comentário
-        </Button>
-        {showCommentForm && (
-          <div className="mt-4">
-            <CommentForm 
-              postId={postId} 
-              onCommentAdded={handleCommentAdded}
-            />
-          </div>
-        )}
+      <div className="text-center py-4 text-muted-foreground">
+        Ainda não há comentários. Seja o primeiro a comentar!
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6 my-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">Comentários ({comments.length})</h3>
-        {!showCommentForm && (
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => setShowCommentForm(true)}
+  const formatCommentDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Function to highlight mentions in comment text
+  const formatCommentText = (text: string) => {
+    // Replace @username with links
+    const parts = text.split(/(@\w+)/g);
+    
+    return parts.map((part, index) => {
+      if (part.startsWith('@')) {
+        const username = part.substring(1);
+        return (
+          <Link 
+            key={index} 
+            to={`/profile/${username}`} 
+            className="text-primary hover:underline"
           >
-            Adicionar comentário
-          </Button>
-        )}
-      </div>
-      
-      {showCommentForm && !replyingTo && (
-        <CommentForm 
-          postId={postId} 
-          onCommentAdded={handleCommentAdded}
-        />
-      )}
-      
-      {comments.map((comment, index) => (
-        <motion.div
-          key={comment.id}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.05 }}
-          className="border border-border p-4 rounded-lg"
-        >
+            {part}
+          </Link>
+        );
+      }
+      return part;
+    });
+  };
+
+  return (
+    <div className="space-y-4 mt-4">
+      {comments.map(comment => (
+        <div key={comment.id} className="border-t pt-4">
           <div className="flex gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage 
-                src={comment.profiles.avatar_url || undefined} 
-                alt={comment.profiles.username} 
-              />
-              <AvatarFallback>
-                {comment.profiles.username ? comment.profiles.username[0].toUpperCase() : 'U'}
-              </AvatarFallback>
-            </Avatar>
-            
+            <Link to={`/profile/${comment.user.username}`} className="block">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={comment.user.avatar_url || undefined} alt={comment.user.username} />
+                <AvatarFallback>{comment.user.username[0]?.toUpperCase() || "U"}</AvatarFallback>
+              </Avatar>
+            </Link>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="font-medium">
-                  {comment.profiles.full_name || comment.profiles.username}
-                </span>
-                {comment.profiles.username.toLowerCase() === 'outliersofc' && (
-                  <Badge variant="outline" className="px-1 bg-primary text-primary-foreground">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Oficial
-                  </Badge>
-                )}
-                <span className="text-xs text-muted-foreground flex items-center">
-                  <Clock className="h-3 w-3 mr-1" />
-                  {new Date(comment.created_at).toLocaleString('pt-BR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                <Link to={`/profile/${comment.user.username}`} className="font-medium text-sm hover:underline">
+                  @{comment.user.username}
+                </Link>
+                <span className="text-xs text-muted-foreground">
+                  {formatCommentDate(comment.created_at)}
                 </span>
               </div>
-              
-              <p className="mt-1 text-sm">{comment.content}</p>
-              
-              <div className="flex gap-3 mt-2">
-                <button className="text-xs text-muted-foreground flex items-center">
-                  <ThumbsUp className="h-3 w-3 mr-1" />
-                  Curtir
-                </button>
-                <button 
-                  className="text-xs text-muted-foreground flex items-center"
-                  onClick={() => handleReply(comment.id)}
+              <p className="mt-1 text-sm whitespace-pre-line">
+                {formatCommentText(comment.content)}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-8 px-2 text-xs rounded-full",
+                    comment.has_liked ? "text-rose-500" : "text-muted-foreground"
+                  )}
+                  onClick={() => handleLikeComment(comment.id, comment.has_liked)}
+                  disabled={likeLoadingId === comment.id}
                 >
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  Responder
-                </button>
+                  {likeLoadingId === comment.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <Heart className={cn("h-3 w-3 mr-1", comment.has_liked ? "fill-rose-500" : "")} />
+                  )}
+                  <span>{comment.likes_count}</span>
+                </Button>
               </div>
-              
-              {replyingTo === comment.id && (
-                <div className="mt-3">
-                  <CommentForm 
-                    postId={postId} 
-                    parentId={comment.id}
-                    onCommentAdded={handleCommentAdded}
-                  />
-                </div>
-              )}
             </div>
           </div>
-        </motion.div>
+        </div>
       ))}
     </div>
   );

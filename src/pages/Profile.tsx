@@ -122,7 +122,6 @@ const Profile: React.FC = () => {
     }
   }, [username, user, authLoading, navigate, refreshKey]);
 
-  // Load saved posts when the tab changes
   useEffect(() => {
     if (activeTab === 'saved' && user && !isSavedPostsLoading && savedPosts.length === 0) {
       fetchSavedPosts(user.id);
@@ -134,7 +133,6 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch profile data for userId:', userId);
       setIsProfileLoading(true);
       
-      // Fetch the basic profile data
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -148,7 +146,6 @@ const Profile: React.FC = () => {
       
       console.log('Profile: Successfully fetched profile data');
       
-      // Fetch post count
       const { count: postCount, error: postCountError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
@@ -159,7 +156,6 @@ const Profile: React.FC = () => {
         throw postCountError;
       }
       
-      // Fetch follower count
       const { count: followerCount, error: followerCountError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
@@ -167,7 +163,6 @@ const Profile: React.FC = () => {
 
       if (followerCountError) throw followerCountError;
 
-      // Fetch following count
       const { count: followingCount, error: followingCountError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
@@ -177,7 +172,6 @@ const Profile: React.FC = () => {
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
-      // Create a complete profile object with all required properties
       const completeProfile: ProfileType = {
         ...data,
         post_count: postCount || 0,
@@ -228,7 +222,6 @@ const Profile: React.FC = () => {
         setIsOwnProfile(true);
       }
       
-      // Fetch post count
       const { count: postCount, error: postCountError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
@@ -239,7 +232,6 @@ const Profile: React.FC = () => {
         throw postCountError;
       }
       
-      // Fetch follower count
       const { count: followerCount, error: followerCountError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
@@ -247,7 +239,6 @@ const Profile: React.FC = () => {
 
       if (followerCountError) throw followerCountError;
 
-      // Fetch following count
       const { count: followingCount, error: followingCountError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
@@ -257,7 +248,6 @@ const Profile: React.FC = () => {
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
-      // Create a complete profile object with all required properties
       const completeProfile: ProfileType = {
         ...data,
         post_count: postCount || 0,
@@ -412,7 +402,6 @@ const Profile: React.FC = () => {
   };
 
   const handleFollowChange = () => {
-    // Refresh follower count after follow status change
     if (profileData) {
       fetchProfileByUsername(profileData.username);
     }

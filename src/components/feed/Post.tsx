@@ -11,6 +11,7 @@ import CommentForm from './CommentForm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +48,7 @@ const Post: React.FC<PostProps> = ({
   onRefresh,
 }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [liked, setLiked] = useState(hasLiked);
   const [likeCount, setLikeCount] = useState(likes);
   const [showComments, setShowComments] = useState(false);
@@ -156,6 +158,10 @@ const Post: React.FC<PostProps> = ({
     }
   };
 
+  const navigateToProfile = () => {
+    navigate(`/profile/${author.username}`);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -165,11 +171,11 @@ const Post: React.FC<PostProps> = ({
     >
       <Card className="overflow-hidden border-none shadow-sm">
         <CardHeader className="flex flex-row items-center gap-3 p-4">
-          <Avatar className="h-10 w-10">
+          <Avatar className="h-10 w-10 cursor-pointer" onClick={navigateToProfile}>
             <AvatarImage src={author.avatar} alt={author.name} />
             <AvatarFallback>{author.name[0]}</AvatarFallback>
           </Avatar>
-          <div className="flex flex-col">
+          <div className="flex flex-col cursor-pointer" onClick={navigateToProfile}>
             <div className="flex items-center gap-1">
               <span className="font-medium text-foreground">{author.name}</span>
               {author.verified && (
