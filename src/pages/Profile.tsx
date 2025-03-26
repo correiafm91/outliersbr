@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getPostsByUserId, getUserLikedPostIds } from '@/integrations/supabase/functions';
+import { getPostsByUserId, getUserLikedPostIds, getSavedPostsByUserId } from '@/integrations/supabase/functions';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { motion } from 'framer-motion';
 import Post from '@/components/feed/Post';
@@ -26,22 +27,29 @@ import {
   CheckCircle,
   Share2,
   BookmarkIcon,
-  Grid3X3Icon
+  Grid3X3Icon,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import FollowButton from '@/components/follow/FollowButton';
+import FollowersDialog from '@/components/follow/FollowersDialog';
+import BannerUpload from '@/components/profile/BannerUpload';
 
 interface ProfileType {
   id: string;
   username: string;
   full_name: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   bio: string | null;
   industry: string | null;
   linkedin_url: string | null;
   website_url: string | null;
   is_public: boolean | null;
   post_count: number;
+  follower_count: number;
+  following_count: number;
 }
 
 interface PostType {
@@ -66,12 +74,16 @@ const Profile: React.FC = () => {
   const [profileData, setProfileData] = useState<ProfileType | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
   const [userPosts, setUserPosts] = useState<PostType[]>([]);
+  const [savedPosts, setSavedPosts] = useState<PostType[]>([]);
   const [isPostsLoading, setIsPostsLoading] = useState(true);
+  const [isSavedPostsLoading, setIsSavedPostsLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('posts');
+  const [isFullImageOpen, setIsFullImageOpen] = useState(false);
 
   useEffect(() => {
     console.log('Profile page load state:', { 
@@ -84,7 +96,7 @@ const Profile: React.FC = () => {
     if (isProfileLoading || isPostsLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 5000);
+      }, 3000); // Reduced from 5000 to 3000 ms for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -111,11 +123,19 @@ const Profile: React.FC = () => {
     }
   }, [username, user, authLoading, navigate, refreshKey]);
 
+  // Load saved posts when the tab changes
+  useEffect(() => {
+    if (activeTab === 'saved' && user && !isSavedPostsLoading && savedPosts.length === 0) {
+      fetchSavedPosts(user.id);
+    }
+  }, [activeTab, user, savedPosts.length, isSavedPostsLoading]);
+
   const fetchProfile = async (userId: string) => {
     try {
       console.log('Profile: Starting to fetch profile data for userId:', userId);
       setIsProfileLoading(true);
       
+      // Fetch the basic profile data
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -129,21 +149,40 @@ const Profile: React.FC = () => {
       
       console.log('Profile: Successfully fetched profile data');
       
-      const { count, error: countError } = await supabase
+      // Fetch post count
+      const { count: postCount, error: postCountError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
         
-      if (countError) {
-        console.error('Profile: Error counting posts:', countError);
-        throw countError;
+      if (postCountError) {
+        console.error('Profile: Error counting posts:', postCountError);
+        throw postCountError;
       }
       
-      console.log('Profile: User has', count, 'posts');
+      // Fetch follower count
+      const { count: followerCount, error: followerCountError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', userId);
+
+      if (followerCountError) throw followerCountError;
+
+      // Fetch following count
+      const { count: followingCount, error: followingCountError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', userId);
+
+      if (followingCountError) throw followingCountError;
+      
+      console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
       setProfileData({
         ...data,
-        post_count: count || 0
+        post_count: postCount || 0,
+        follower_count: followerCount || 0,
+        following_count: followingCount || 0
       });
     } catch (error: any) {
       console.error('Error fetching profile:', error);
@@ -186,21 +225,40 @@ const Profile: React.FC = () => {
         setIsOwnProfile(true);
       }
       
-      const { count, error: countError } = await supabase
+      // Fetch post count
+      const { count: postCount, error: postCountError } = await supabase
         .from('posts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', data.id);
         
-      if (countError) {
-        console.error('Profile: Error counting posts:', countError);
-        throw countError;
+      if (postCountError) {
+        console.error('Profile: Error counting posts:', postCountError);
+        throw postCountError;
       }
       
-      console.log('Profile: User has', count, 'posts');
+      // Fetch follower count
+      const { count: followerCount, error: followerCountError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', data.id);
+
+      if (followerCountError) throw followerCountError;
+
+      // Fetch following count
+      const { count: followingCount, error: followingCountError } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', data.id);
+
+      if (followingCountError) throw followingCountError;
+      
+      console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
       setProfileData({
         ...data,
-        post_count: count || 0
+        post_count: postCount || 0,
+        follower_count: followerCount || 0,
+        following_count: followingCount || 0
       });
       
       fetchUserPosts(data.id);
@@ -259,6 +317,49 @@ const Profile: React.FC = () => {
     }
   };
 
+  const fetchSavedPosts = async (userId: string) => {
+    try {
+      console.log('Profile: Starting to fetch saved posts for userId:', userId);
+      setIsSavedPostsLoading(true);
+      
+      const savedPostsData = await getSavedPostsByUserId(userId);
+      console.log('Profile: Received saved posts data:', { 
+        postCount: savedPostsData?.length || 0,
+        success: !!savedPostsData 
+      });
+      
+      if (!savedPostsData || savedPostsData.length === 0) {
+        console.log('Profile: No saved posts found for this user');
+        setSavedPosts([]);
+        setIsSavedPostsLoading(false);
+        return;
+      }
+      
+      let enhancedPosts = [...savedPostsData];
+      
+      if (user) {
+        console.log('Profile: Fetching liked posts for user');
+        const likedPostIds = await getUserLikedPostIds(user.id);
+        console.log('Profile: User has liked', likedPostIds.length, 'posts');
+        
+        enhancedPosts = savedPostsData.map(post => ({
+          ...post,
+          has_liked: likedPostIds.includes(post.id)
+        }));
+      }
+      
+      setSavedPosts(enhancedPosts as PostType[]);
+      console.log('Profile: Saved posts processing complete');
+    } catch (error: any) {
+      console.error('Error fetching saved posts:', error);
+      toast.error('Erro ao carregar publicações salvas', {
+        description: error.message,
+      });
+    } finally {
+      setIsSavedPostsLoading(false);
+    }
+  };
+
   const handleEditClick = () => {
     setIsEditMode(true);
   };
@@ -301,6 +402,22 @@ const Profile: React.FC = () => {
     setRefreshKey(prevKey => prevKey + 1);
     setShowLoadingHelp(false);
     setLoadError(null);
+  };
+
+  const handleFollowChange = () => {
+    // Refresh follower count after follow status change
+    if (profileData) {
+      fetchProfileByUsername(profileData.username);
+    }
+  };
+
+  const handleBannerChange = (url: string | null) => {
+    if (profileData) {
+      setProfileData({
+        ...profileData,
+        banner_url: url
+      });
+    }
   };
 
   if (authLoading || isProfileLoading) {
@@ -351,11 +468,27 @@ const Profile: React.FC = () => {
         ) : profileData ? (
           <div className="max-w-xl mx-auto">
             <div className="relative mb-4">
-              <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/40 w-full"></div>
+              <div className="h-32 bg-gradient-to-r from-primary/20 to-primary/40 w-full relative">
+                {profileData.banner_url && (
+                  <img 
+                    src={profileData.banner_url} 
+                    alt="Banner" 
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                )}
+                <BannerUpload 
+                  userId={profileData.id} 
+                  currentBanner={profileData.banner_url} 
+                  onBannerChange={handleBannerChange}
+                />
+              </div>
               <div className="px-4">
                 <div className="flex justify-between -mt-16">
-                  <Avatar className="h-24 w-24 border-4 border-background">
-                    <AvatarImage src={profileData.avatar_url || undefined} alt={profileData.username} />
+                  <Avatar className="h-24 w-24 border-4 border-background cursor-pointer">
+                    <AvatarImage 
+                      src={profileData.avatar_url || undefined} 
+                      alt={profileData.username} 
+                    />
                     <AvatarFallback className="bg-primary/20 text-xl font-bold">
                       {profileData.username?.[0]?.toUpperCase() || 'U'}
                     </AvatarFallback>
@@ -367,9 +500,10 @@ const Profile: React.FC = () => {
                         Editar Perfil
                       </Button>
                     ) : (
-                      <Button variant="default">
-                        Seguir
-                      </Button>
+                      <FollowButton 
+                        targetUserId={profileData.id} 
+                        onFollowChange={handleFollowChange}
+                      />
                     )}
                     <Button variant="ghost" size="icon" onClick={handleShare}>
                       <Share2 className="h-4 w-4" />
@@ -397,8 +531,12 @@ const Profile: React.FC = () => {
                   
                   <div className="flex gap-4 mt-4 text-sm">
                     <span><strong>{profileData.post_count}</strong> publicações</span>
-                    <span><strong>0</strong> seguidores</span>
-                    <span><strong>0</strong> seguindo</span>
+                    <FollowersDialog 
+                      userId={profileData.id}
+                      username={profileData.username}
+                      followersCount={profileData.follower_count}
+                      followingCount={profileData.following_count}
+                    />
                   </div>
                   
                   <div className="flex gap-2 mt-2">
@@ -427,7 +565,7 @@ const Profile: React.FC = () => {
               </div>
             </div>
             
-            <Tabs defaultValue="posts" className="w-full px-4">
+            <Tabs defaultValue="posts" value={activeTab} onValueChange={setActiveTab} className="w-full px-4">
               <TabsList className="w-full">
                 <TabsTrigger value="posts" className="flex-1">
                   <Grid3X3Icon className="h-4 w-4 mr-2" />
@@ -515,10 +653,60 @@ const Profile: React.FC = () => {
               </TabsContent>
               
               <TabsContent value="saved" className="mt-4">
-                <div className="text-center py-10">
-                  <BookmarkIcon className="h-10 w-10 mx-auto opacity-30" />
-                  <p className="mt-4 text-muted-foreground">Nenhum item salvo</p>
-                </div>
+                {!isOwnProfile ? (
+                  <div className="text-center py-10">
+                    <BookmarkIcon className="h-10 w-10 mx-auto opacity-30" />
+                    <p className="mt-4 text-muted-foreground">Posts salvos são visíveis apenas para você</p>
+                  </div>
+                ) : isSavedPostsLoading ? (
+                  <div className="flex flex-col justify-center items-center py-10">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+                    <p className="text-muted-foreground">Carregando publicações salvas...</p>
+                  </div>
+                ) : savedPosts.length > 0 ? (
+                  <div className="space-y-4">
+                    {savedPosts.map((post, index) => (
+                      <motion.div
+                        key={post.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <Post 
+                          id={post.id}
+                          author={{
+                            name: post.profiles.full_name || post.profiles.username,
+                            username: post.profiles.username,
+                            avatar: post.profiles.avatar_url || 'https://via.placeholder.com/150',
+                            verified: post.profiles.username?.toLowerCase() === 'outliersofc'
+                          }}
+                          content={post.content}
+                          images={post.images || []}
+                          timestamp={new Date(post.created_at).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                          likes={post.likes}
+                          comments={post.comments}
+                          hasLiked={post.has_liked}
+                          isSaved={true}
+                          onRefresh={() => setRefreshKey(prev => prev + 1)}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <BookmarkIcon className="h-10 w-10 mx-auto opacity-30" />
+                    <p className="mt-4 text-muted-foreground">Nenhum item salvo</p>
+                    <Button variant="outline" className="mt-4" asChild>
+                      <Link to="/explore">Explorar publicações</Link>
+                    </Button>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>

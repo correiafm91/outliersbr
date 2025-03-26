@@ -20,6 +20,7 @@ const BottomNav: React.FC = () => {
       <div className="flex justify-around items-center h-16">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
+          const IconComponent = item.icon;
           
           return (
             <Link
@@ -30,7 +31,7 @@ const BottomNav: React.FC = () => {
                 isActive ? "text-primary" : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-300"
               )}
             >
-              <item.icon className={cn(
+              <IconComponent className={cn(
                 "h-6 w-6",
                 isActive ? "scale-110" : "scale-100"
               )} />

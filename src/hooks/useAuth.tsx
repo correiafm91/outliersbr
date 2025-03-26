@@ -32,27 +32,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasCompletedProfile, setHasCompletedProfile] = useState(false);
 
-  // Fetch profile data function with timeout
+  // Fetch profile data function with improved error handling
   const fetchProfile = async (userId: string) => {
     try {
       setIsProfileLoading(true);
       
-      // Create a promise that rejects after a timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Timeout fetching profile')), a5000);
-      });
+      // Create a controller for timeout management
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      // Race the fetch against the timeout
-      const profilePromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
       
-      const { data, error } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ]) as { data: ProfileData | null, error: any };
+      clearTimeout(timeoutId);
 
       if (error) {
         console.error('Error fetching profile:', error);
@@ -85,7 +80,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log('Auth loading timeout reached, forcing completion');
         setIsLoading(false);
       }
-    }, 10000); // Force completion after 10 seconds max
+    }, 8000); // Force completion after 8 seconds max
 
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
