@@ -1,3 +1,4 @@
+
 import { supabase } from './client';
 
 // Helper function to get profile data by user ID with caching
@@ -36,7 +37,13 @@ export async function getProfileByUserId(userId: string) {
 }
 
 // Batched query helpers to reduce number of requests
-export async function batchedQuery(table: string, column: string, values: any[], select: string = '*') {
+// Explicitly type the table parameter to avoid infinite type instantiation
+export async function batchedQuery<T = any>(
+  table: 'comments' | 'posts' | 'comment_likes' | 'follows' | 'likes' | 'notifications' | 'profiles' | 'saved_posts',
+  column: string, 
+  values: any[], 
+  select: string = '*'
+): Promise<T[]> {
   // Split into chunks of 100 for better performance
   const chunkSize = 100;
   const uniqueValues = [...new Set(values)];
@@ -529,6 +536,70 @@ export async function getPostsByUserId(userId: string) {
     return enhancedPosts;
   } catch (error) {
     console.error('Error fetching user posts:', error);
+    throw error;
+  }
+}
+
+// Add the missing getSavedPostsByUserId function
+export async function getSavedPostsByUserId(userId: string) {
+  try {
+    // Fetch the saved post IDs for this user
+    const { data: savedPostsData, error: savedPostsError } = await supabase
+      .from('saved_posts')
+      .select('post_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (savedPostsError) throw savedPostsError;
+    
+    if (!savedPostsData || savedPostsData.length === 0) {
+      return [];
+    }
+
+    // Extract post IDs
+    const postIds = savedPostsData.map(item => item.post_id);
+    
+    // Fetch the actual posts
+    const { data: postsData, error: postsError } = await supabase
+      .from('posts')
+      .select('*, profiles:user_id(*)')
+      .in('id', postIds);
+
+    if (postsError) throw postsError;
+    
+    if (!postsData || postsData.length === 0) {
+      return [];
+    }
+
+    // Get likes and comments counts
+    const likesPromises = postIds.map(id => getLikesCountForPost(id));
+    const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
+    
+    const [likesCounts, commentsCounts] = await Promise.all([
+      Promise.all(likesPromises),
+      Promise.all(commentsPromises)
+    ]);
+    
+    // Combine everything
+    const enhancedPosts = postsData.map((post, index) => {
+      const postIndex = postIds.indexOf(post.id);
+      
+      return {
+        ...post,
+        profiles: {
+          username: post.profiles?.username || 'usuário',
+          avatar_url: post.profiles?.avatar_url || null,
+          full_name: post.profiles?.full_name || null
+        },
+        likes: postIndex >= 0 ? likesCounts[postIndex] || 0 : 0,
+        comments: postIndex >= 0 ? commentsCounts[postIndex] || 0 : 0,
+        has_liked: false // This will be set separately for logged-in users
+      };
+    });
+    
+    return enhancedPosts;
+  } catch (error) {
+    console.error('Error fetching saved posts:', error);
     throw error;
   }
 }

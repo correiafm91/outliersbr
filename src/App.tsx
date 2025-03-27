@@ -1,4 +1,5 @@
-import React, { lazy, Suspense } from 'react';
+
+import React, { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -6,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/hooks/useAuth';
 import { AnimatePresence } from 'framer-motion';
 import VersionBadge from '@/components/layout/VersionBadge';
+import { supabase, ensureCommentLikesTable, ensureNotificationsTable } from '@/integrations/supabase/client';
 
 // Lazy loaded components
 const Index = lazy(() => import('@/pages/Index'));
@@ -27,6 +29,24 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  // Ensure database tables are initialized
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Check and create necessary tables
+        await Promise.all([
+          ensureCommentLikesTable(),
+          ensureNotificationsTable()
+        ]);
+        console.log('Supabase tables initialized successfully');
+      } catch (error) {
+        console.error('Error initializing Supabase tables:', error);
+      }
+    };
+    
+    initializeApp();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
