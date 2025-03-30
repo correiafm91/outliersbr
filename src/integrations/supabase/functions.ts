@@ -1,4 +1,3 @@
-
 import { supabase } from './client';
 
 // Helper function to get profile data by user ID with caching
@@ -174,14 +173,31 @@ export async function getCommentsCountForPost(postId: string): Promise<number> {
 const postsCache = {
   data: null as any[] | null,
   expiry: 0,
-  loading: false
+  loading: false,
+  lastError: null as Error | null,
+  errorCount: 0,
+  lastErrorTime: 0
 };
-const POSTS_CACHE_DURATION = 30 * 1000; // 30 seconds
+const POSTS_CACHE_DURATION = 60 * 1000; // Increased to 60 seconds
+const ERROR_RESET_TIME = 5 * 60 * 1000; // 5 minutes to reset error count
 
 export async function getPostsWithProfiles() {
   try {
     const now = Date.now();
     console.log('Starting getPostsWithProfiles function');
+    
+    // Check if we need to reset error counter
+    if (postsCache.errorCount > 0 && (now - postsCache.lastErrorTime) > ERROR_RESET_TIME) {
+      postsCache.errorCount = 0;
+      postsCache.lastError = null;
+    }
+    
+    // If too many errors recently, add exponential backoff
+    if (postsCache.errorCount > 3) {
+      const backoffTime = Math.min(Math.pow(2, postsCache.errorCount - 3) * 1000, 60000); // Max 1 minute backoff
+      console.log(`Too many errors recently, backing off for ${backoffTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
+    }
     
     // Return cached data if available and not expired
     if (postsCache.data && now < postsCache.expiry && !postsCache.loading) {
@@ -192,8 +208,9 @@ export async function getPostsWithProfiles() {
     // If already loading, wait for it to complete rather than starting another request
     if (postsCache.loading) {
       console.log('Posts already loading, waiting...');
-      // Wait for up to 5 seconds for loading to complete
-      for (let i = 0; i < 50; i++) {
+      
+      // Wait for up to 8 seconds for loading to complete
+      for (let i = 0; i < 80; i++) {
         await new Promise(resolve => setTimeout(resolve, 100));
         if (!postsCache.loading && postsCache.data) {
           console.log('Using freshly loaded posts data');
@@ -202,6 +219,11 @@ export async function getPostsWithProfiles() {
       }
       
       // If still loading after timeout, throw error to trigger fallback
+      if (postsCache.data) {
+        console.log('Loading taking too long, returning stale data');
+        return postsCache.data; // Return stale data instead of throwing
+      }
+      
       throw new Error('Timeout waiting for posts data');
     }
     
@@ -209,11 +231,17 @@ export async function getPostsWithProfiles() {
     postsCache.loading = true;
     
     try {
-      // First, fetch posts
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      // First, fetch posts with a timeout
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal);
+        
+      clearTimeout(timeoutId);
   
       if (postsError) throw postsError;
       
@@ -229,11 +257,18 @@ export async function getPostsWithProfiles() {
       // Get all user IDs from the posts to fetch their profiles
       const userIds = [...new Set(postsData.map(post => post.user_id))];
       
+      // Create a new controller for the next fetch
+      const profileController = new AbortController();
+      const profileTimeoutId = setTimeout(() => profileController.abort(), 10000);
+      
       // Fetch all profiles for these users
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, username, avatar_url, full_name')
-        .in('id', userIds);
+        .in('id', userIds)
+        .abortSignal(profileController.signal);
+        
+      clearTimeout(profileTimeoutId);
         
       if (profilesError) throw profilesError;
       
@@ -243,15 +278,35 @@ export async function getPostsWithProfiles() {
         return acc;
       }, {} as Record<string, any>);
       
-      // Count likes and comments in parallel using Promise.all
+      // Count likes and comments in parallel using Promise.all with timeouts
       const postIds = postsData.map(post => post.id);
       
-      const [likesCounts, commentsCounts] = await Promise.all([
-        // Batch likes counts
-        Promise.all(postIds.map(id => getLikesCountForPost(id))),
-        // Batch comments counts
-        Promise.all(postIds.map(id => getCommentsCountForPost(id)))
-      ]);
+      // Create promise with timeout wrapper
+      const withTimeout = (promise: Promise<any>, ms: number) => {
+        let timeoutId: NodeJS.Timeout;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Operation timed out')), ms);
+        });
+        return Promise.race([
+          promise,
+          timeoutPromise,
+        ]).finally(() => clearTimeout(timeoutId));
+      };
+      
+      let likesCounts, commentsCounts;
+      
+      try {
+        // Try to get all counts, but catch and provide fallbacks if it fails
+        [likesCounts, commentsCounts] = await Promise.all([
+          withTimeout(Promise.all(postIds.map(id => getLikesCountForPost(id))), 10000),
+          withTimeout(Promise.all(postIds.map(id => getCommentsCountForPost(id))), 10000)
+        ]);
+      } catch (error) {
+        console.error('Error getting counts, using fallbacks:', error);
+        // Use fallback counts (all zeros)
+        likesCounts = Array(postIds.length).fill(0);
+        commentsCounts = Array(postIds.length).fill(0);
+      }
       
       console.log('Successfully fetched all related data');
       
@@ -279,15 +334,39 @@ export async function getPostsWithProfiles() {
       // Update cache
       postsCache.data = enhancedPosts;
       postsCache.expiry = now + POSTS_CACHE_DURATION;
+      postsCache.errorCount = 0;
+      postsCache.lastError = null;
       
       return enhancedPosts;
+    } catch (error: any) {
+      // Handle errors with retry information
+      console.error('Error fetching posts with profiles:', error);
+      
+      // Update error tracking
+      postsCache.errorCount++;
+      postsCache.lastError = error;
+      postsCache.lastErrorTime = now;
+      
+      // If we have stale data, return it instead of failing
+      if (postsCache.data) {
+        console.log('Returning stale data due to fetch error');
+        return postsCache.data;
+      }
+      
+      throw new Error('A conexão expirou, tente novamente');
     } finally {
       // Clear loading flag
       postsCache.loading = false;
     }
-  } catch (error) {
-    console.error('Error fetching posts with profiles:', error);
-    postsCache.loading = false;
+  } catch (error: any) {
+    console.error('Error at top level in getPostsWithProfiles:', error);
+    
+    // If we have stale data, return it instead of failing
+    if (postsCache.data) {
+      console.log('Returning stale data due to top-level error');
+      return postsCache.data;
+    }
+    
     throw error;
   }
 }
@@ -484,122 +563,198 @@ export async function getFollowingCountForUser(userId: string): Promise<number> 
 
 // Helper function to get posts for a specific user
 export async function getPostsByUserId(userId: string) {
-  try {
-    // Fetch posts for this user
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (postsError) throw postsError;
-    
-    if (!postsData || postsData.length === 0) {
-      return [];
-    }
-
-    // Fetch the user's profile
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+  let retries = 2;
+  
+  while (retries >= 0) {
+    try {
+      console.log('Profile: Starting to fetch posts for userId:', userId);
       
-    if (profileError) throw profileError;
-    
-    // Count likes and comments for each post
-    const postIds = postsData.map(post => post.id);
-    
-    // Get likes counts
-    const likesPromises = postIds.map(id => getLikesCountForPost(id));
-    const likesCounts = await Promise.all(likesPromises);
-    
-    // Get comments counts
-    const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
-    const commentsCounts = await Promise.all(commentsPromises);
-    
-    // Combine everything
-    const enhancedPosts = postsData.map((post, index) => {
-      return {
-        ...post,
-        profiles: {
-          username: profile.username,
-          avatar_url: profile.avatar_url,
-          full_name: profile.full_name
-        },
-        likes: likesCounts[index] || 0,
-        comments: commentsCounts[index] || 0,
-        has_liked: false // This will be set separately for logged-in users
-      };
-    });
-    
-    return enhancedPosts;
-  } catch (error) {
-    console.error('Error fetching user posts:', error);
-    throw error;
+      // Fetch posts for this user with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const { data: postsData, error: postsError } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal);
+        
+      clearTimeout(timeoutId);
+
+      if (postsError) throw postsError;
+      
+      if (!postsData || postsData.length === 0) {
+        return [];
+      }
+
+      // Fetch the user's profile
+      const profileController = new AbortController();
+      const profileTimeoutId = setTimeout(() => profileController.abort(), 5000);
+      
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+        .abortSignal(profileController.signal);
+        
+      clearTimeout(profileTimeoutId);
+        
+      if (profileError) throw profileError;
+      
+      // Count likes and comments for each post with fallbacks
+      const postIds = postsData.map(post => post.id);
+      
+      let likesCounts, commentsCounts;
+      
+      try {
+        // Get likes counts
+        likesCounts = await Promise.all(
+          postIds.map(id => getLikesCountForPost(id).catch(() => 0))
+        );
+        
+        // Get comments counts
+        commentsCounts = await Promise.all(
+          postIds.map(id => getCommentsCountForPost(id).catch(() => 0))
+        );
+      } catch (error) {
+        console.error('Error getting counts, using fallbacks:', error);
+        likesCounts = Array(postIds.length).fill(0);
+        commentsCounts = Array(postIds.length).fill(0); 
+      }
+      
+      // Combine everything
+      const enhancedPosts = postsData.map((post, index) => {
+        return {
+          ...post,
+          profiles: {
+            username: profile.username,
+            avatar_url: profile.avatar_url,
+            full_name: profile.full_name
+          },
+          likes: likesCounts[index] || 0,
+          comments: commentsCounts[index] || 0,
+          has_liked: false // This will be set separately for logged-in users
+        };
+      });
+      
+      return enhancedPosts;
+    } catch (error: any) {
+      console.error(`Error fetching user posts (attempt ${2-retries}/2):`, error);
+      
+      if (retries > 0) {
+        console.log(`Retrying... (${retries} attempts left)`);
+        retries--;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        // On final retry failure, return empty array rather than throw
+        console.error('All retries failed, returning empty array');
+        return [];
+      }
+    }
   }
+  
+  // This should never be reached due to the return in the final catch block
+  return [];
 }
 
 // Add the missing getSavedPostsByUserId function
 export async function getSavedPostsByUserId(userId: string) {
-  try {
-    // Fetch the saved post IDs for this user
-    const { data: savedPostsData, error: savedPostsError } = await supabase
-      .from('saved_posts')
-      .select('post_id')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-
-    if (savedPostsError) throw savedPostsError;
-    
-    if (!savedPostsData || savedPostsData.length === 0) {
-      return [];
-    }
-
-    // Extract post IDs
-    const postIds = savedPostsData.map(item => item.post_id);
-    
-    // Fetch the actual posts
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select('*, profiles:user_id(*)')
-      .in('id', postIds);
-
-    if (postsError) throw postsError;
-    
-    if (!postsData || postsData.length === 0) {
-      return [];
-    }
-
-    // Get likes and comments counts
-    const likesPromises = postIds.map(id => getLikesCountForPost(id));
-    const commentsPromises = postIds.map(id => getCommentsCountForPost(id));
-    
-    const [likesCounts, commentsCounts] = await Promise.all([
-      Promise.all(likesPromises),
-      Promise.all(commentsPromises)
-    ]);
-    
-    // Combine everything
-    const enhancedPosts = postsData.map((post, index) => {
-      const postIndex = postIds.indexOf(post.id);
+  let retries = 2;
+  
+  while (retries >= 0) {
+    try {
+      console.log('Profile: Starting to fetch saved posts for userId:', userId);
       
-      return {
-        ...post,
-        profiles: {
-          username: post.profiles?.username || 'usuário',
-          avatar_url: post.profiles?.avatar_url || null,
-          full_name: post.profiles?.full_name || null
-        },
-        likes: postIndex >= 0 ? likesCounts[postIndex] || 0 : 0,
-        comments: postIndex >= 0 ? commentsCounts[postIndex] || 0 : 0,
-        has_liked: false // This will be set separately for logged-in users
-      };
-    });
-    
-    return enhancedPosts;
-  } catch (error) {
-    console.error('Error fetching saved posts:', error);
-    throw error;
+      // Fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      // Fetch the saved post IDs for this user
+      const { data: savedPostsData, error: savedPostsError } = await supabase
+        .from('saved_posts')
+        .select('post_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal);
+        
+      clearTimeout(timeoutId);
+
+      if (savedPostsError) throw savedPostsError;
+      
+      if (!savedPostsData || savedPostsData.length === 0) {
+        return [];
+      }
+
+      // Extract post IDs
+      const postIds = savedPostsData.map(item => item.post_id);
+      
+      // Fetch the actual posts with timeout
+      const postsController = new AbortController();
+      const postsTimeoutId = setTimeout(() => postsController.abort(), 10000);
+      
+      const { data: postsData, error: postsError } = await supabase
+        .from('posts')
+        .select('*, profiles:user_id(*)')
+        .in('id', postIds)
+        .abortSignal(postsController.signal);
+        
+      clearTimeout(postsTimeoutId);
+
+      if (postsError) throw postsError;
+      
+      if (!postsData || postsData.length === 0) {
+        return [];
+      }
+
+      // Get likes and comments counts with fallbacks
+      let likesCounts, commentsCounts;
+      
+      try {
+        [likesCounts, commentsCounts] = await Promise.all([
+          Promise.all(postIds.map(id => getLikesCountForPost(id).catch(() => 0))),
+          Promise.all(postIds.map(id => getCommentsCountForPost(id).catch(() => 0)))
+        ]);
+      } catch (error) {
+        console.error('Error getting counts, using fallbacks:', error);
+        likesCounts = Array(postIds.length).fill(0);
+        commentsCounts = Array(postIds.length).fill(0);
+      }
+      
+      // Combine everything
+      const enhancedPosts = postsData.map((post, index) => {
+        const postIndex = postIds.indexOf(post.id);
+        
+        return {
+          ...post,
+          profiles: {
+            username: post.profiles?.username || 'usuário',
+            avatar_url: post.profiles?.avatar_url || null,
+            full_name: post.profiles?.full_name || null
+          },
+          likes: postIndex >= 0 ? likesCounts[postIndex] || 0 : 0,
+          comments: postIndex >= 0 ? commentsCounts[postIndex] || 0 : 0,
+          has_liked: false // This will be set separately for logged-in users
+        };
+      });
+      
+      return enhancedPosts;
+    } catch (error: any) {
+      console.error(`Error fetching saved posts (attempt ${2-retries}/2):`, error);
+      
+      if (retries > 0) {
+        console.log(`Retrying... (${retries} attempts left)`);
+        retries--;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        // On final retry failure, return empty array rather than throw
+        console.error('All retries failed, returning empty array');
+        return [];
+      }
+    }
   }
+  
+  // This should never be reached due to the return in the final catch block
+  return [];
 }

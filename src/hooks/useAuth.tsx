@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Session, User } from '@supabase/supabase-js';
@@ -37,21 +36,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasCompletedProfile, setHasCompletedProfile] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Fetch profile data function with improved error handling
   const fetchProfile = async (userId: string) => {
     try {
       setIsProfileLoading(true);
       
-      // Create a controller for timeout management
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .single()
+        .abortSignal(controller.signal);
       
       clearTimeout(timeoutId);
 
@@ -60,7 +60,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return null;
       }
 
-      // Ensure banner_url is included in the profile data
       const profileWithBanner = {
         ...data,
         banner_url: data.banner_url || null
@@ -68,8 +67,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setProfile(profileWithBanner);
       
-      // Check if profile has been completed (has username, bio, and avatar)
-      // The profile is considered complete if user has set an avatar
       setHasCompletedProfile(!!(data?.avatar_url));
       
       return profileWithBanner;
@@ -81,7 +78,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Refresh profile function that can be called from components
   const refreshProfile = async () => {
     if (user?.id) {
       await fetchProfile(user.id);
@@ -89,48 +85,79 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Create a timeout to set loading to false after max allowed time
-    const loadingTimeout = setTimeout(() => {
-      if (isLoading) {
-        console.log('Auth loading timeout reached, forcing completion');
-        setIsLoading(false);
-      }
-    }, 8000); // Force completion after 8 seconds max
-
-    // Set up auth state listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    if (authInitialized) return;
+    
+    const initializeAuth = async () => {
+      try {
+        const loadingTimeout = setTimeout(() => {
+          if (isLoading) {
+            console.log('Auth loading timeout reached, forcing completion');
+            setIsLoading(false);
+          }
+        }, 8000);
         
-        if (session?.user) {
-          await fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-          setHasCompletedProfile(false);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          async (_event, session) => {
+            setSession(session);
+            setUser(session?.user ?? null);
+            
+            if (session?.user) {
+              await fetchProfile(session.user.id);
+            } else {
+              setProfile(null);
+              setHasCompletedProfile(false);
+            }
+            
+            setIsLoading(false);
+          }
+        );
+
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          if (retryCount >= 3) {
+            setSession(null);
+            setUser(null);
+            setIsLoading(false);
+          } else {
+            setRetryCount(prev => prev + 1);
+            setTimeout(() => setAuthInitialized(false), 2000);
+          }
+          clearTimeout(loadingTimeout);
+          return;
+        }
+        
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+        
+        if (data.session?.user) {
+          await fetchProfile(data.session.user.id);
         }
         
         setIsLoading(false);
+        setAuthInitialized(true);
+        clearTimeout(loadingTimeout);
+        
+        return () => {
+          subscription.unsubscribe();
+        };
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        setIsLoading(false);
+        
+        if (retryCount < 3) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => setAuthInitialized(false), 2000);
+        } else {
+          setAuthInitialized(true);
+        }
       }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-      }
-      
-      setIsLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(loadingTimeout);
     };
-  }, []);
+    
+    setAuthInitialized(true);
+    initializeAuth();
+  }, [isLoading, retryCount, authInitialized]);
 
   const signOut = async () => {
     try {

@@ -16,17 +16,23 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     detectSessionInUrl: true,
   },
   global: {
+    headers: {
+      'x-client-info': 'outliers-app/1.0.0',
+    },
     fetch: (...args) => {
-      // Add timeout logic for better error handling
+      // Add improved timeout logic for better error handling
       const [resource, config] = args;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased to 20 second timeout
       
       return fetch(resource, {
         ...config,
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
     }
+  },
+  realtime: {
+    timeout: 30000, // 30 seconds timeout for realtime
   }
 });
 
@@ -36,52 +42,73 @@ const tablesInitialized = {
   notifications: false
 };
 
-// Check for comment_likes table
+// Check for comment_likes table with improved retry mechanism
 export const ensureCommentLikesTable = async () => {
   if (tablesInitialized.commentLikes) return;
   
-  try {
-    console.log('Checking for comment_likes table...');
-    const { count, error } = await supabase
-      .from('comment_likes')
-      .select('*', { count: 'exact', head: true })
-      .limit(1);
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      console.log('Checking for comment_likes table...');
+      const { count, error } = await supabase
+        .from('comment_likes')
+        .select('*', { count: 'exact', head: true })
+        .limit(1);
+        
+      if (error && error.code === '42P01') { // Table doesn't exist
+        console.log('Creating comment_likes table...');
+        await supabase.rpc('create_comment_likes_if_not_exists');
+      }
       
-    if (error && error.code === '42P01') { // Table doesn't exist
-      console.log('Creating comment_likes table...');
-      await supabase.rpc('create_comment_likes_if_not_exists');
+      tablesInitialized.commentLikes = true;
+      console.log('comment_likes table is ready');
+      return;
+    } catch (error) {
+      console.error('Failed to check/create comment_likes table:', error);
+      retries--;
+      if (retries > 0) {
+        console.log(`Retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+      }
     }
-    
-    tablesInitialized.commentLikes = true;
-    console.log('comment_likes table is ready');
-  } catch (error) {
-    console.error('Failed to check/create comment_likes table:', error);
   }
+  
+  console.log('Unable to initialize comment_likes table after multiple attempts');
 };
 
-// Check for notifications table
+// Check for notifications table with improved retry mechanism
 export const ensureNotificationsTable = async () => {
   if (tablesInitialized.notifications) return;
   
-  try {
-    console.log('Checking for notifications table...');
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .limit(1);
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      console.log('Checking for notifications table...');
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .limit(1);
+        
+      if (error && error.code === '42P01') { // Table doesn't exist
+        console.log('Creating notifications table...');
+        await supabase.rpc('create_notifications_if_not_exists');
+      }
       
-    if (error && error.code === '42P01') { // Table doesn't exist
-      console.log('Creating notifications table...');
-      await supabase.rpc('create_notifications_if_not_exists');
+      tablesInitialized.notifications = true;
+      console.log('notifications table is ready');
+      return;
+    } catch (error) {
+      console.error('Failed to check/create notifications table:', error);
+      retries--;
+      if (retries > 0) {
+        console.log(`Retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+      }
     }
-    
-    tablesInitialized.notifications = true;
-    console.log('notifications table is ready');
-  } catch (error) {
-    console.error('Failed to check/create notifications table:', error);
   }
+  
+  console.log('Unable to initialize notifications table after multiple attempts');
 };
 
 // Initialize required tables
-ensureCommentLikesTable();
-ensureNotificationsTable();
+// Don't auto-initialize here; let the App component handle it with proper error handling

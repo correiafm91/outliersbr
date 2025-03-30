@@ -1,5 +1,4 @@
-
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -8,6 +7,7 @@ import { AuthProvider } from '@/hooks/useAuth';
 import { AnimatePresence } from 'framer-motion';
 import VersionBadge from '@/components/layout/VersionBadge';
 import { supabase, ensureCommentLikesTable, ensureNotificationsTable } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 // Lazy loaded components
 const Index = lazy(() => import('@/pages/Index'));
@@ -17,35 +17,66 @@ const Profile = lazy(() => import('@/pages/Profile'));
 const Notifications = lazy(() => import('@/pages/Notifications'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
-// Create a client
+// Create a client with improved configuration
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 2,
+      retry: 3, // Increased from 2 to 3
       staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      cacheTime: 1000 * 60 * 30, // 30 minutes
     },
   },
 });
 
 function App() {
-  // Ensure database tables are initialized
+  const [tablesInitialized, setTablesInitialized] = useState(false);
+  const [initAttempts, setInitAttempts] = useState(0);
+
+  // Ensure database tables are initialized with retry
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        // Check connectivity before attempting initialization
+        const { data, error } = await supabase.from('profiles').select('count(*)', { count: 'exact', head: true }).limit(1);
+        
+        if (error) {
+          console.error('Connectivity check failed:', error);
+          throw new Error('Sem conexão com o banco de dados');
+        }
+        
         // Check and create necessary tables
         await Promise.all([
           ensureCommentLikesTable(),
           ensureNotificationsTable()
         ]);
+        
         console.log('Supabase tables initialized successfully');
-      } catch (error) {
+        setTablesInitialized(true);
+      } catch (error: any) {
         console.error('Error initializing Supabase tables:', error);
+        
+        // If we've tried less than 3 times, retry after delay
+        if (initAttempts < 3) {
+          console.log(`Retrying initialization (attempt ${initAttempts + 1}/3)...`);
+          setTimeout(() => {
+            setInitAttempts(prev => prev + 1);
+          }, 3000); // Wait 3 seconds before retry
+        } else {
+          // After 3 failed attempts, proceed anyway
+          setTablesInitialized(true);
+          toast.error('Problemas de conexão', {
+            description: 'Algumas funcionalidades podem não estar disponíveis. Verifique sua conexão com a internet.',
+          });
+        }
       }
     };
     
-    initializeApp();
-  }, []);
+    if (!tablesInitialized) {
+      initializeApp();
+    }
+  }, [tablesInitialized, initAttempts]);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -95,7 +95,7 @@ const Profile: React.FC = () => {
     if (isProfileLoading || isPostsLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 3000); // Reduced from 5000 to 3000 ms for faster feedback
+      }, 2000); // Reduced from 3000 to 2000 ms for faster feedback
       
       return () => clearTimeout(timer);
     } else {
@@ -109,12 +109,68 @@ const Profile: React.FC = () => {
       if (!username && user) {
         console.log('Profile: Loading own profile for user ID:', user.id);
         setIsOwnProfile(true);
-        fetchProfile(user.id);
-        fetchUserPosts(user.id);
+        
+        const loadProfile = async () => {
+          let attempts = 2;
+          while (attempts >= 0) {
+            try {
+              await fetchProfile(user.id);
+              break; // Exit loop if successful
+            } catch (error) {
+              console.error(`Error loading profile (attempt ${2-attempts}/2):`, error);
+              if (attempts > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts--;
+              } else {
+                setLoadError('Não foi possível carregar o perfil. Tente novamente.');
+              }
+            }
+          }
+        };
+        
+        const loadPosts = async () => {
+          let attempts = 2;
+          while (attempts >= 0) {
+            try {
+              await fetchUserPosts(user.id);
+              break; // Exit loop if successful
+            } catch (error) {
+              console.error(`Error loading posts (attempt ${2-attempts}/2):`, error);
+              if (attempts > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts--;
+              } else {
+                setIsPostsLoading(false);
+              }
+            }
+          }
+        };
+        
+        loadProfile();
+        loadPosts();
       } else if (username) {
         console.log('Profile: Loading profile for username:', username);
         setIsOwnProfile(false);
-        fetchProfileByUsername(username);
+        
+        const loadProfileByUsername = async () => {
+          let attempts = 2;
+          while (attempts >= 0) {
+            try {
+              await fetchProfileByUsername(username);
+              break; // Exit loop if successful
+            } catch (error) {
+              console.error(`Error loading profile by username (attempt ${2-attempts}/2):`, error);
+              if (attempts > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts--;
+              } else {
+                setLoadError('Não foi possível carregar o perfil. Tente novamente.');
+              }
+            }
+          }
+        };
+        
+        loadProfileByUsername();
       } else if (!user) {
         console.log('Profile: No user logged in, redirecting to home');
         navigate('/');
@@ -133,11 +189,17 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch profile data for userId:', userId);
       setIsProfileLoading(true);
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .single()
+        .abortSignal(controller.signal);
+        
+      clearTimeout(timeoutId);
 
       if (error) {
         console.error('Profile: Error fetching profile data:', error);
@@ -146,47 +208,74 @@ const Profile: React.FC = () => {
       
       console.log('Profile: Successfully fetched profile data');
       
-      const { count: postCount, error: postCountError } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
-        
-      if (postCountError) {
-        console.error('Profile: Error counting posts:', postCountError);
-        throw postCountError;
+      const countController = new AbortController();
+      const countTimeoutId = setTimeout(() => countController.abort(), 5000);
+      
+      let postCount = 0;
+      try {
+        const { count, error: postCountError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .abortSignal(countController.signal);
+          
+        if (!postCountError) {
+          postCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting posts, using fallback:', error);
       }
       
-      const { count: followerCount, error: followerCountError } = await supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('following_id', userId);
+      let followerCount = 0;
+      try {
+        const { count, error: followerCountError } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', userId)
+          .abortSignal(countController.signal);
 
-      if (followerCountError) throw followerCountError;
+        if (!followerCountError) {
+          followerCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting followers, using fallback:', error);
+      }
+      
+      let followingCount = 0;
+      try {
+        const { count, error: followingCountError } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', userId)
+          .abortSignal(countController.signal);
 
-      const { count: followingCount, error: followingCountError } = await supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('follower_id', userId);
-
-      if (followingCountError) throw followingCountError;
+        if (!followingCountError) {
+          followingCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting following, using fallback:', error);
+      }
+      
+      clearTimeout(countTimeoutId);
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
       const completeProfile: ProfileType = {
         ...data,
-        post_count: postCount || 0,
-        follower_count: followerCount || 0,
-        following_count: followingCount || 0,
+        post_count: postCount,
+        follower_count: followerCount,
+        following_count: followingCount,
         banner_url: data.banner_url || null
       };
       
       setProfileData(completeProfile);
     } catch (error: any) {
       console.error('Error fetching profile:', error);
-      setLoadError(`Erro ao carregar perfil: ${error.message}`);
+      setLoadError(`Erro ao carregar perfil: ${error.message || 'Conexão falhou'}`);
       toast.error('Erro ao carregar perfil', {
-        description: error.message,
+        description: error.message || 'Tente novamente mais tarde',
       });
+      throw error;
     } finally {
       setIsProfileLoading(false);
     }
@@ -197,11 +286,17 @@ const Profile: React.FC = () => {
       console.log('Profile: Starting to fetch profile by username:', usernameToFetch);
       setIsProfileLoading(true);
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('username', usernameToFetch)
-        .maybeSingle();
+        .maybeSingle()
+        .abortSignal(controller.signal);
+        
+      clearTimeout(timeoutId);
 
       if (error) {
         console.error('Profile: Error fetching profile by username:', error);
@@ -222,37 +317,63 @@ const Profile: React.FC = () => {
         setIsOwnProfile(true);
       }
       
-      const { count: postCount, error: postCountError } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', data.id);
-        
-      if (postCountError) {
-        console.error('Profile: Error counting posts:', postCountError);
-        throw postCountError;
+      const countController = new AbortController();
+      const countTimeoutId = setTimeout(() => countController.abort(), 5000);
+      
+      let postCount = 0;
+      try {
+        const { count, error: postCountError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', data.id)
+          .abortSignal(countController.signal);
+          
+        if (!postCountError) {
+          postCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting posts, using fallback:', error);
       }
       
-      const { count: followerCount, error: followerCountError } = await supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('following_id', data.id);
+      let followerCount = 0;
+      try {
+        const { count, error: followerCountError } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', data.id)
+          .abortSignal(countController.signal);
 
-      if (followerCountError) throw followerCountError;
+        if (!followerCountError) {
+          followerCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting followers, using fallback:', error);
+      }
+      
+      let followingCount = 0;
+      try {
+        const { count, error: followingCountError } = await supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', data.id)
+          .abortSignal(countController.signal);
 
-      const { count: followingCount, error: followingCountError } = await supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('follower_id', data.id);
-
-      if (followingCountError) throw followingCountError;
+        if (!followingCountError) {
+          followingCount = count || 0;
+        }
+      } catch (error) {
+        console.error('Error counting following, using fallback:', error);
+      }
+      
+      clearTimeout(countTimeoutId);
       
       console.log('Profile: User has', postCount, 'posts,', followerCount, 'followers and is following', followingCount, 'users');
       
       const completeProfile: ProfileType = {
         ...data,
-        post_count: postCount || 0,
-        follower_count: followerCount || 0,
-        following_count: followingCount || 0,
+        post_count: postCount,
+        follower_count: followerCount,
+        following_count: followingCount,
         banner_url: data.banner_url || null
       };
       
@@ -261,10 +382,11 @@ const Profile: React.FC = () => {
       fetchUserPosts(data.id);
     } catch (error: any) {
       console.error('Error fetching profile by username:', error);
-      setLoadError(`Erro ao carregar perfil: ${error.message}`);
+      setLoadError(`Erro ao carregar perfil: ${error.message || 'Conexão falhou'}`);
       toast.error('Erro ao carregar perfil', {
-        description: error.message,
+        description: error.message || 'Tente novamente mais tarde',
       });
+      throw error;
     } finally {
       setIsProfileLoading(false);
     }
@@ -292,22 +414,26 @@ const Profile: React.FC = () => {
       
       if (user) {
         console.log('Profile: Fetching liked posts for user');
-        const likedPostIds = await getUserLikedPostIds(user.id);
-        console.log('Profile: User has liked', likedPostIds.length, 'posts');
-        
-        enhancedPosts = postsData.map(post => ({
-          ...post,
-          has_liked: likedPostIds.includes(post.id)
-        }));
+        try {
+          const likedPostIds = await getUserLikedPostIds(user.id);
+          console.log('Profile: User has liked', likedPostIds.length, 'posts');
+          
+          enhancedPosts = postsData.map(post => ({
+            ...post,
+            has_liked: likedPostIds.includes(post.id)
+          }));
+        } catch (error) {
+          console.error('Error fetching liked posts, continuing without like status:', error);
+        }
       }
       
       setUserPosts(enhancedPosts as PostType[]);
       console.log('Profile: Posts processing complete');
     } catch (error: any) {
       console.error('Error fetching user posts:', error);
-      setLoadError(`Erro ao carregar publicações: ${error.message}`);
+      setLoadError(`Erro ao carregar publicações: ${error.message || 'Conexão falhou'}`);
       toast.error('Erro ao carregar publicações', {
-        description: error.message,
+        description: error.message || 'Tente novamente mais tarde',
       });
     } finally {
       setIsPostsLoading(false);
@@ -336,13 +462,17 @@ const Profile: React.FC = () => {
       
       if (user) {
         console.log('Profile: Fetching liked posts for user');
-        const likedPostIds = await getUserLikedPostIds(user.id);
-        console.log('Profile: User has liked', likedPostIds.length, 'posts');
-        
-        enhancedPosts = savedPostsData.map(post => ({
-          ...post,
-          has_liked: likedPostIds.includes(post.id)
-        }));
+        try {
+          const likedPostIds = await getUserLikedPostIds(user.id);
+          console.log('Profile: User has liked', likedPostIds.length, 'posts');
+          
+          enhancedPosts = savedPostsData.map(post => ({
+            ...post,
+            has_liked: likedPostIds.includes(post.id)
+          }));
+        } catch (error) {
+          console.error('Error fetching liked posts, continuing without like status:', error);
+        }
       }
       
       setSavedPosts(enhancedPosts as PostType[]);
@@ -350,7 +480,7 @@ const Profile: React.FC = () => {
     } catch (error: any) {
       console.error('Error fetching saved posts:', error);
       toast.error('Erro ao carregar publicações salvas', {
-        description: error.message,
+        description: error.message || 'Tente novamente mais tarde',
       });
     } finally {
       setIsSavedPostsLoading(false);
@@ -399,6 +529,8 @@ const Profile: React.FC = () => {
     setRefreshKey(prevKey => prevKey + 1);
     setShowLoadingHelp(false);
     setLoadError(null);
+    
+    toast.info('Atualizando dados...');
   };
 
   const handleFollowChange = () => {
