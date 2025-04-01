@@ -36,7 +36,7 @@ export async function getProfileByUserId(userId: string) {
 }
 
 // Batched query helpers to reduce number of requests
-// Explicitly type the table parameter to avoid infinite type instantiation
+// Corrigindo o problema de tipo infinito usando uma união literal explícita
 export async function batchedQuery<T = any>(
   table: 'comments' | 'posts' | 'comment_likes' | 'follows' | 'likes' | 'notifications' | 'profiles' | 'saved_posts',
   column: string, 
@@ -569,18 +569,12 @@ export async function getPostsByUserId(userId: string) {
     try {
       console.log('Profile: Starting to fetch posts for userId:', userId);
       
-      // Fetch posts for this user with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
+      // Fetch posts for this user
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .abortSignal(controller.signal);
-        
-      clearTimeout(timeoutId);
+        .order('created_at', { ascending: false });
 
       if (postsError) throw postsError;
       
@@ -589,17 +583,11 @@ export async function getPostsByUserId(userId: string) {
       }
 
       // Fetch the user's profile
-      const profileController = new AbortController();
-      const profileTimeoutId = setTimeout(() => profileController.abort(), 5000);
-      
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
-        .abortSignal(profileController.signal);
-        
-      clearTimeout(profileTimeoutId);
+        .single();
         
       if (profileError) throw profileError;
       
@@ -629,9 +617,9 @@ export async function getPostsByUserId(userId: string) {
         return {
           ...post,
           profiles: {
-            username: profile.username,
-            avatar_url: profile.avatar_url,
-            full_name: profile.full_name
+            username: profile?.username || 'usuário',
+            avatar_url: profile?.avatar_url || null,
+            full_name: profile?.full_name || null
           },
           likes: likesCounts[index] || 0,
           comments: commentsCounts[index] || 0,
@@ -659,7 +647,7 @@ export async function getPostsByUserId(userId: string) {
   return [];
 }
 
-// Add the missing getSavedPostsByUserId function
+// Implementar a função getSavedPostsByUserId que está faltando
 export async function getSavedPostsByUserId(userId: string) {
   let retries = 2;
   
@@ -667,19 +655,12 @@ export async function getSavedPostsByUserId(userId: string) {
     try {
       console.log('Profile: Starting to fetch saved posts for userId:', userId);
       
-      // Fetch with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
       // Fetch the saved post IDs for this user
       const { data: savedPostsData, error: savedPostsError } = await supabase
         .from('saved_posts')
         .select('post_id')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .abortSignal(controller.signal);
-        
-      clearTimeout(timeoutId);
+        .order('created_at', { ascending: false });
 
       if (savedPostsError) throw savedPostsError;
       
@@ -690,22 +671,33 @@ export async function getSavedPostsByUserId(userId: string) {
       // Extract post IDs
       const postIds = savedPostsData.map(item => item.post_id);
       
-      // Fetch the actual posts with timeout
-      const postsController = new AbortController();
-      const postsTimeoutId = setTimeout(() => postsController.abort(), 10000);
-      
+      // Fetch the actual posts
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('*, profiles:user_id(*)')
-        .in('id', postIds)
-        .abortSignal(postsController.signal);
-        
-      clearTimeout(postsTimeoutId);
+        .select('*, user_id')
+        .in('id', postIds);
 
       if (postsError) throw postsError;
       
       if (!postsData || postsData.length === 0) {
         return [];
+      }
+
+      // Fetch all profiles for the user IDs in one batch
+      const userIds = [...new Set(postsData.map(post => post.user_id))];
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url, full_name')
+        .in('id', userIds);
+        
+      if (profilesError) throw profilesError;
+      
+      // Create a map of user_id to profile data
+      const profilesMap: Record<string, any> = {};
+      if (profilesData) {
+        profilesData.forEach(profile => {
+          profilesMap[profile.id] = profile;
+        });
       }
 
       // Get likes and comments counts with fallbacks
@@ -723,15 +715,16 @@ export async function getSavedPostsByUserId(userId: string) {
       }
       
       // Combine everything
-      const enhancedPosts = postsData.map((post, index) => {
+      const enhancedPosts = postsData.map(post => {
         const postIndex = postIds.indexOf(post.id);
+        const profile = profilesMap[post.user_id] || {};
         
         return {
           ...post,
           profiles: {
-            username: post.profiles?.username || 'usuário',
-            avatar_url: post.profiles?.avatar_url || null,
-            full_name: post.profiles?.full_name || null
+            username: profile?.username || 'usuário',
+            avatar_url: profile?.avatar_url || null,
+            full_name: profile?.full_name || null
           },
           likes: postIndex >= 0 ? likesCounts[postIndex] || 0 : 0,
           comments: postIndex >= 0 ? commentsCounts[postIndex] || 0 : 0,

@@ -50,8 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
-        .abortSignal(controller.signal);
+        .single();
       
       clearTimeout(timeoutId);
 

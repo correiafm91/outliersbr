@@ -1,3 +1,4 @@
+
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
@@ -25,7 +26,7 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      cacheTime: 1000 * 60 * 30, // 30 minutes
+      gcTime: 1000 * 60 * 30, // 30 minutes (nova propriedade no lugar de cacheTime)
     },
   },
 });
