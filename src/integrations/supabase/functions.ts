@@ -1,3 +1,4 @@
+
 import { supabase } from './client';
 
 // Helper function to get profile data by user ID with caching
@@ -455,9 +456,7 @@ export async function getUserNotifications(userId: string, limit = 20): Promise<
         *,
         actor:actor_id (
           id,
-          username:profiles(username),
-          avatar_url:profiles(avatar_url),
-          full_name:profiles(full_name)
+          profiles:profiles(username, avatar_url, full_name)
         ),
         post:post_id (
           id,
@@ -470,7 +469,23 @@ export async function getUserNotifications(userId: string, limit = 20): Promise<
       
     if (error) throw error;
     
-    return data || [];
+    // Transformar os dados para o formato esperado
+    const formattedData = (data || []).map(notification => {
+      // Extrair as informações do ator de maneira segura
+      const actorProfile = notification.actor?.profiles?.[0] || {};
+      
+      return {
+        ...notification,
+        actor: {
+          id: notification.actor_id || '',
+          username: actorProfile.username,
+          avatar_url: actorProfile.avatar_url,
+          full_name: actorProfile.full_name
+        }
+      };
+    });
+    
+    return formattedData;
   } catch (error) {
     console.error('Error fetching user notifications:', error);
     return [];
@@ -647,7 +662,7 @@ export async function getPostsByUserId(userId: string) {
   return [];
 }
 
-// Implementar a função getSavedPostsByUserId que está faltando
+// Implementar a função getSavedPostsByUserId 
 export async function getSavedPostsByUserId(userId: string) {
   let retries = 2;
   

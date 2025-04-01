@@ -196,8 +196,7 @@ const Profile: React.FC = () => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
-        .abortSignal(controller.signal);
+        .single();
         
       clearTimeout(timeoutId);
 
@@ -216,8 +215,7 @@ const Profile: React.FC = () => {
         const { count, error: postCountError } = await supabase
           .from('posts')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .abortSignal(countController.signal);
+          .eq('user_id', userId);
           
         if (!postCountError) {
           postCount = count || 0;
@@ -231,8 +229,7 @@ const Profile: React.FC = () => {
         const { count, error: followerCountError } = await supabase
           .from('follows')
           .select('*', { count: 'exact', head: true })
-          .eq('following_id', userId)
-          .abortSignal(countController.signal);
+          .eq('following_id', userId);
 
         if (!followerCountError) {
           followerCount = count || 0;
@@ -246,8 +243,7 @@ const Profile: React.FC = () => {
         const { count, error: followingCountError } = await supabase
           .from('follows')
           .select('*', { count: 'exact', head: true })
-          .eq('follower_id', userId)
-          .abortSignal(countController.signal);
+          .eq('follower_id', userId);
 
         if (!followingCountError) {
           followingCount = count || 0;
@@ -293,8 +289,7 @@ const Profile: React.FC = () => {
         .from('profiles')
         .select('*')
         .eq('username', usernameToFetch)
-        .maybeSingle()
-        .abortSignal(controller.signal);
+        .maybeSingle();
         
       clearTimeout(timeoutId);
 
@@ -325,8 +320,7 @@ const Profile: React.FC = () => {
         const { count, error: postCountError } = await supabase
           .from('posts')
           .select('*', { count: 'exact', head: true })
-          .eq('user_id', data.id)
-          .abortSignal(countController.signal);
+          .eq('user_id', data.id);
           
         if (!postCountError) {
           postCount = count || 0;
@@ -340,8 +334,7 @@ const Profile: React.FC = () => {
         const { count, error: followerCountError } = await supabase
           .from('follows')
           .select('*', { count: 'exact', head: true })
-          .eq('following_id', data.id)
-          .abortSignal(countController.signal);
+          .eq('following_id', data.id);
 
         if (!followerCountError) {
           followerCount = count || 0;
@@ -355,8 +348,7 @@ const Profile: React.FC = () => {
         const { count, error: followingCountError } = await supabase
           .from('follows')
           .select('*', { count: 'exact', head: true })
-          .eq('follower_id', data.id)
-          .abortSignal(countController.signal);
+          .eq('follower_id', data.id);
 
         if (!followingCountError) {
           followingCount = count || 0;

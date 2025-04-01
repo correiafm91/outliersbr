@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PageTransition from '@/components/layout/PageTransition';
@@ -12,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Bell, Heart, MessageSquare, UserPlus, Activity, Clock, CheckCheck, Loader2 } from 'lucide-react';
+import { getUserNotifications } from '@/integrations/supabase/functions';
 
 interface Notification {
   id: string;
@@ -22,9 +22,9 @@ interface Notification {
   comment_id?: string;
   actor: {
     id: string;
-    username?: string;
-    avatar_url?: string;
-    full_name?: string;
+    username?: string | undefined;
+    avatar_url?: string | undefined;
+    full_name?: string | undefined;
   };
   post?: {
     id: string;
@@ -58,44 +58,19 @@ const Notifications: React.FC = () => {
       setIsLoading(true);
       setError(null);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const query = supabase
-        .from('notifications')
-        .select(`
-          *,
-          actor:actor_id (
-            id,
-            username:profiles(username),
-            avatar_url:profiles(avatar_url),
-            full_name:profiles(full_name)
-          ),
-          post:post_id (
-            id,
-            content
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      // Usar função utilitária para buscar notificações
+      const data = await getUserNotifications(user.id);
       
       // Filtrar por lido/não lido se necessário
+      let filteredData = [...data];
       if (activeTab === 'unread') {
-        query.eq('read', false);
+        filteredData = data.filter(notification => !notification.read);
       } else if (activeTab === 'read') {
-        query.eq('read', true);
+        filteredData = data.filter(notification => notification.read);
       }
       
-      const { data, error } = await query;
-      
-      clearTimeout(timeoutId);
-      
-      if (error) {
-        throw error;
-      }
-      
-      console.log('Notificações carregadas:', data);
-      setNotifications(data || []);
+      console.log('Notificações carregadas:', filteredData);
+      setNotifications(filteredData);
     } catch (error: any) {
       console.error('Erro ao buscar notificações:', error);
       setError('Não foi possível carregar suas notificações. Tente novamente mais tarde.');
