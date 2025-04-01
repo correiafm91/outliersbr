@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Session, User } from '@supabase/supabase-js';
@@ -43,6 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsProfileLoading(true);
       
+      // Definir um timeout de 8 segundos para a requisição
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
       
@@ -55,10 +57,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       clearTimeout(timeoutId);
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        console.error('Erro ao buscar perfil:', error);
         return null;
       }
 
+      // Garantir que banner_url existe
       const profileWithBanner = {
         ...data,
         banner_url: data.banner_url || null
@@ -66,11 +69,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setProfile(profileWithBanner);
       
+      // Considerar o perfil completo se tiver um avatar
       setHasCompletedProfile(!!(data?.avatar_url));
       
       return profileWithBanner;
     } catch (error) {
-      console.error('Error in fetchProfile:', error);
+      console.error('Erro em fetchProfile:', error);
       return null;
     } finally {
       setIsProfileLoading(false);
@@ -88,13 +92,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     const initializeAuth = async () => {
       try {
+        // Definir um timeout de 8 segundos para evitar que a aplicação fique travada
         const loadingTimeout = setTimeout(() => {
           if (isLoading) {
-            console.log('Auth loading timeout reached, forcing completion');
+            console.log('Timeout de carregamento de autenticação atingido, forçando conclusão');
             setIsLoading(false);
           }
         }, 8000);
         
+        // Configurar o listener para mudanças de estado de autenticação
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
           async (_event, session) => {
             setSession(session);
@@ -111,15 +117,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         );
 
+        // Obter a sessão atual
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Error getting session:', error);
+          console.error('Erro ao obter sessão:', error);
           if (retryCount >= 3) {
+            // Se já tentamos 3 vezes, desistimos e continuamos
             setSession(null);
             setUser(null);
             setIsLoading(false);
           } else {
+            // Tentar novamente
             setRetryCount(prev => prev + 1);
             setTimeout(() => setAuthInitialized(false), 2000);
           }
@@ -142,13 +151,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           subscription.unsubscribe();
         };
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('Erro de inicialização de autenticação:', error);
         setIsLoading(false);
         
         if (retryCount < 3) {
+          // Tentar novamente após um breve atraso
           setRetryCount(prev => prev + 1);
           setTimeout(() => setAuthInitialized(false), 2000);
         } else {
+          // Depois de 3 tentativas, continuamos mesmo com erro
           setAuthInitialized(true);
         }
       }
@@ -187,7 +198,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
   return context;
 };

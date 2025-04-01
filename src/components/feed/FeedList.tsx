@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Loader2, RefreshCcw, AlertCircle } from 'lucide-react';
-import { getPostsWithProfiles, getUserLikedPostIds } from '@/integrations/supabase/functions';
+import { getPostsWithProfiles, getUserLikedPostIds } from '@/integrations/supabase/utils';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -36,15 +36,17 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showLoadingHelp, setShowLoadingHelp] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  // Set a maximum retry limit
+  // Definir um limite máximo de tentativas
   const MAX_RETRIES = 3;
 
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setShowLoadingHelp(true);
-      }, 1500); // Reduced from 2000 to 1500 ms for faster feedback
+      }, 1500); // Reduzido de 2000 para 1500 ms para feedback mais rápido
       
       return () => clearTimeout(timer);
     } else {
@@ -61,42 +63,45 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     }
 
     try {
-      console.log('FeedList: Starting to fetch posts');
+      console.log('FeedList: Iniciando busca de posts');
       setIsLoading(true);
       setLoadError(null);
       if (onLoadStateChange) onLoadStateChange(false);
 
-      // Set up timeout handling
-      const timeoutPromise = new Promise<null>((_, reject) => {
-        setTimeout(() => reject(new Error('A conexão expirou, tente novamente')), 10000);
-      });
+      // Definir um timeout de 10 segundos
+      let postsData: any[] = [];
       
-      // Race the fetch against the timeout
-      const postsData = await Promise.race([
-        getPostsWithProfiles(),
-        timeoutPromise
-      ]) as PostType[] | null;
+      try {
+        // Buscar posts com limite e paginação
+        postsData = await getPostsWithProfiles(20, page);
+      } catch (error: any) {
+        console.error('Erro na busca de posts:', error);
+        throw new Error('A conexão expirou, tente novamente');
+      }
       
-      console.log('FeedList: Received posts data:', { 
+      console.log('FeedList: Dados de posts recebidos:', { 
         postCount: postsData?.length || 0,
         success: !!postsData 
       });
 
-      // If no posts yet, return early
+      // Se não há posts ainda, retornar cedo
       if (!postsData || postsData.length === 0) {
-        setPosts([]);
+        if (page === 0) {
+          setPosts([]);
+        }
+        setHasMore(false);
         setIsLoading(false);
         if (onLoadStateChange) onLoadStateChange(true);
         return;
       }
 
-      // If user is logged in, check which posts they've liked
+      // Se o usuário estiver logado, verificar quais posts ele curtiu
       let enhancedPosts = [...postsData];
       
       if (user) {
-        console.log('FeedList: Fetching liked posts for user');
+        console.log('FeedList: Buscando posts curtidos pelo usuário');
         const likedPostIds = await getUserLikedPostIds(user.id);
-        console.log('FeedList: User has liked', likedPostIds.length, 'posts');
+        console.log('FeedList: Usuário curtiu', likedPostIds.length, 'posts');
         
         enhancedPosts = postsData.map(post => ({
           ...post,
@@ -104,21 +109,28 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
         }));
       }
 
-      setPosts(enhancedPosts);
-      setRetryCount(0); // Reset retry count on success
-      console.log('FeedList: Posts processing complete');
+      // Atualizar o estado com os novos posts
+      if (page === 0) {
+        setPosts(enhancedPosts);
+      } else {
+        setPosts(prev => [...prev, ...enhancedPosts]);
+      }
+      
+      setHasMore(enhancedPosts.length === 20); // Se retornou menos de 20, não há mais
+      setRetryCount(0); // Resetar contagem de tentativas ao ter sucesso
+      console.log('FeedList: Processamento de posts completo');
     } catch (error: any) {
-      console.error('Error fetching posts:', error);
+      console.error('Erro ao buscar posts:', error);
       setLoadError(`Erro ao carregar publicações: ${error.message}`);
       
-      // Increment retry count and try again after a delay
+      // Incrementar contagem de tentativas e tentar novamente após um atraso
       setRetryCount(prev => prev + 1);
       
       if (retryCount < MAX_RETRIES - 1) {
-        // Wait longer between retries
+        // Esperar mais tempo entre as tentativas
         const retryDelay = 1000 * (retryCount + 1);
         setTimeout(() => {
-          console.log(`Retrying fetch (attempt ${retryCount + 1})`);
+          console.log(`Tentando buscar novamente (tentativa ${retryCount + 1})`);
           setRefreshKey(prev => prev + 1);
         }, retryDelay);
       } else {
@@ -129,26 +141,34 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     } finally {
       setIsLoading(false);
       if (onLoadStateChange) onLoadStateChange(true);
-      console.log('FeedList: Loading state set to false');
+      console.log('FeedList: Estado de carregamento definido como false');
     }
-  }, [user, onLoadStateChange, retryCount]);
+  }, [user, onLoadStateChange, retryCount, page, MAX_RETRIES]);
 
-  // Trigger refresh of posts
+  // Disparar atualização de posts
   const refreshPosts = useCallback(() => {
-    setRetryCount(0); // Reset retry count on manual refresh
+    setPage(0); // Voltar para a primeira página
+    setRetryCount(0); // Resetar contagem de tentativas na atualização manual
     setRefreshKey(prev => prev + 1);
   }, []);
 
+  // Carregar mais posts
+  const loadMorePosts = useCallback(() => {
+    if (!isLoading && hasMore) {
+      setPage(prev => prev + 1);
+    }
+  }, [isLoading, hasMore]);
+
   useEffect(() => {
     fetchPosts();
-  }, [refreshKey, fetchPosts]);
+  }, [refreshKey, fetchPosts, page]);
 
   const handleRetry = () => {
     setShowLoadingHelp(false);
     refreshPosts();
   };
 
-  // Memoize post components to reduce re-renders
+  // Memorizar componentes de post para reduzir re-renderizações
   const postComponents = useMemo(() => {
     if (posts.length === 0) return null;
     
@@ -157,7 +177,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
         key={post.id}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: Math.min(index * 0.05, 0.5) }} // Cap the delay for better performance
+        transition={{ delay: Math.min(index * 0.05, 0.5) }} // Limitar o atraso para melhor desempenho
       >
         <Post 
           id={post.id}
@@ -185,7 +205,7 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     ));
   }, [posts, refreshPosts]);
 
-  if (isLoading) {
+  if (isLoading && posts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -241,6 +261,29 @@ const FeedList: React.FC<FeedListProps> = ({ onLoadStateChange }) => {
     >
       <div className="space-y-4">
         {postComponents}
+        
+        {hasMore && (
+          <div className="flex justify-center py-4">
+            <Button 
+              variant="outline"
+              onClick={loadMorePosts}
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                "Carregar mais"
+              )}
+            </Button>
+          </div>
+        )}
+        
+        {isLoading && posts.length > 0 && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        )}
       </div>
     </motion.div>
   );

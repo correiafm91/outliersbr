@@ -11,20 +11,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bell, ThumbsUp, MessageSquare, Link, Activity, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { Bell, Heart, MessageSquare, UserPlus, Activity, Clock, CheckCheck, Loader2 } from 'lucide-react';
 
 interface Notification {
   id: string;
-  type: 'like' | 'comment' | 'follow';
+  type: string;
   created_at: string;
+  read: boolean;
   post_id?: string;
-  post_content?: string;
-  from_user: {
-    username: string;
-    avatar_url: string | null;
-    full_name: string | null;
+  comment_id?: string;
+  actor: {
+    id: string;
+    username?: string;
+    avatar_url?: string;
+    full_name?: string;
   };
-  is_read: boolean;
+  post?: {
+    id: string;
+    content: string;
+  };
 }
 
 const Notifications: React.FC = () => {
@@ -32,310 +37,287 @@ const Notifications: React.FC = () => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('all');
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
         navigate('/');
+        toast.error('Você precisa estar logado para ver notificações');
       } else {
         fetchNotifications();
       }
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, activeTab]);
   
   const fetchNotifications = async () => {
+    if (!user) return;
+    
     try {
       setIsLoading(true);
+      setError(null);
       
-      // For now, we'll simulate notifications based on likes and comments
-      // In a real implementation, you would have a dedicated notifications table
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      // Get user's posts
-      const { data: userPosts, error: postsError } = await supabase
-        .from('posts')
-        .select('id, content')
-        .eq('user_id', user?.id);
-        
-      if (postsError) throw postsError;
+      const query = supabase
+        .from('notifications')
+        .select(`
+          *,
+          actor:actor_id (
+            id,
+            username:profiles(username),
+            avatar_url:profiles(avatar_url),
+            full_name:profiles(full_name)
+          ),
+          post:post_id (
+            id,
+            content
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
       
-      if (!userPosts || userPosts.length === 0) {
-        setNotifications([]);
-        setIsLoading(false);
-        return;
+      // Filtrar por lido/não lido se necessário
+      if (activeTab === 'unread') {
+        query.eq('read', false);
+      } else if (activeTab === 'read') {
+        query.eq('read', true);
       }
       
-      const postIds = userPosts.map(post => post.id);
-      const postContents = userPosts.reduce((acc, post) => {
-        acc[post.id] = post.content.substring(0, 50) + (post.content.length > 50 ? '...' : '');
-        return acc;
-      }, {} as Record<string, string>);
+      const { data, error } = await query;
       
-      // Get likes notifications
-      const { data: likes, error: likesError } = await supabase
-        .from('likes')
-        .select(`
-          id,
-          created_at,
-          post_id,
-          user_id
-        `)
-        .in('post_id', postIds)
-        .neq('user_id', user?.id)
-        .order('created_at', { ascending: false });
-        
-      if (likesError) throw likesError;
+      clearTimeout(timeoutId);
       
-      // Get comments notifications
-      const { data: comments, error: commentsError } = await supabase
-        .from('comments')
-        .select(`
-          id,
-          created_at,
-          post_id,
-          user_id,
-          content
-        `)
-        .in('post_id', postIds)
-        .neq('user_id', user?.id)
-        .order('created_at', { ascending: false });
-        
-      if (commentsError) throw commentsError;
-      
-      // Get user profiles for these notifications
-      const userIds = [
-        ...(likes || []).map(like => like.user_id),
-        ...(comments || []).map(comment => comment.user_id)
-      ];
-      
-      if (userIds.length === 0) {
-        setNotifications([]);
-        setIsLoading(false);
-        return;
+      if (error) {
+        throw error;
       }
       
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, avatar_url, full_name')
-        .in('id', userIds);
-        
-      if (profilesError) throw profilesError;
-      
-      // Create a map for quicker lookup
-      const profilesMap = (profiles || []).reduce((acc, profile) => {
-        acc[profile.id] = profile;
-        return acc;
-      }, {} as Record<string, any>);
-      
-      // Format notifications
-      const likeNotifications = (likes || []).map(like => {
-        const userProfile = profilesMap[like.user_id] || {
-          username: 'usuário',
-          avatar_url: null,
-          full_name: null
-        };
-        
-        return {
-          id: `like-${like.id}`,
-          type: 'like' as const,
-          created_at: like.created_at,
-          post_id: like.post_id,
-          post_content: postContents[like.post_id],
-          from_user: {
-            username: userProfile.username,
-            avatar_url: userProfile.avatar_url,
-            full_name: userProfile.full_name
-          },
-          is_read: false // In a real app, you'd track read status
-        };
-      });
-      
-      const commentNotifications = (comments || []).map(comment => {
-        const userProfile = profilesMap[comment.user_id] || {
-          username: 'usuário',
-          avatar_url: null,
-          full_name: null
-        };
-        
-        return {
-          id: `comment-${comment.id}`,
-          type: 'comment' as const,
-          created_at: comment.created_at,
-          post_id: comment.post_id,
-          post_content: postContents[comment.post_id],
-          comment_content: comment.content,
-          from_user: {
-            username: userProfile.username,
-            avatar_url: userProfile.avatar_url,
-            full_name: userProfile.full_name
-          },
-          is_read: false // In a real app, you'd track read status
-        };
-      });
-      
-      // Combine and sort by date
-      const allNotifications = [
-        ...likeNotifications,
-        ...commentNotifications
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      
-      setNotifications(allNotifications);
+      console.log('Notificações carregadas:', data);
+      setNotifications(data || []);
     } catch (error: any) {
-      console.error('Error fetching notifications:', error);
+      console.error('Erro ao buscar notificações:', error);
+      setError('Não foi possível carregar suas notificações. Tente novamente mais tarde.');
       toast.error('Erro ao carregar notificações', {
-        description: error.message,
+        description: error.message
       });
     } finally {
       setIsLoading(false);
     }
   };
   
-  const handleNotificationClick = (notification: Notification) => {
-    if (notification.post_id) {
-      navigate(`/post/${notification.post_id}`);
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId)
+        .eq('user_id', user?.id);
+        
+      if (error) throw error;
+      
+      // Atualizar notificações localmente
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif.id === notificationId ? { ...notif, read: true } : notif
+        )
+      );
+    } catch (error: any) {
+      console.error('Erro ao marcar notificação como lida:', error);
+      toast.error('Erro ao atualizar notificação', {
+        description: error.message
+      });
     }
   };
   
-  const getTimeAgo = (dateString: string) => {
-    const now = new Date();
-    const date = new Date(dateString);
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    
-    if (diffSecs < 60) {
-      return `${diffSecs}s`;
-    } else if (diffMins < 60) {
-      return `${diffMins}m`;
-    } else if (diffHours < 24) {
-      return `${diffHours}h`;
-    } else if (diffDays < 7) {
-      return `${diffDays}d`;
-    } else {
-      return date.toLocaleDateString('pt-BR');
+  const markAllAsRead = async () => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', user?.id)
+        .eq('read', false);
+        
+      if (error) throw error;
+      
+      // Atualizar notificações localmente
+      setNotifications(prev => 
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+      toast.success('Todas as notificações marcadas como lidas');
+    } catch (error: any) {
+      console.error('Erro ao marcar todas as notificações como lidas:', error);
+      toast.error('Erro ao atualizar notificações', {
+        description: error.message
+      });
     }
   };
-
-  if (authLoading || isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+  
+  const handleNotificationClick = (notification: Notification) => {
+    // Marcar como lida se não estiver
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+    
+    // Navegar para a página apropriada com base no tipo de notificação
+    if (notification.post_id) {
+      // Adicionar lógica para navegar para o post quando tivermos essa página
+      toast.info('Visualização de posts individuais será implementada em breve');
+    } else if (notification.type === 'follow') {
+      // Navegar para o perfil do usuário que seguiu
+      navigate(`/profile/${notification.actor?.username}`);
+    }
+  };
+  
+  const getNotificationText = (notification: Notification) => {
+    const actor = notification.actor?.username || 'Alguém';
+    
+    switch (notification.type) {
+      case 'like':
+        return `${actor} curtiu sua publicação`;
+      case 'comment':
+        return `${actor} comentou em sua publicação`;
+      case 'follow':
+        return `${actor} começou a seguir você`;
+      case 'comment_like':
+        return `${actor} curtiu seu comentário`;
+      case 'mention':
+        return `${actor} mencionou você em um comentário`;
+      default:
+        return `Nova notificação de ${actor}`;
+    }
+  };
+  
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'like':
+        return <Heart className="h-4 w-4 text-rose-500" />;
+      case 'comment':
+        return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'follow':
+        return <UserPlus className="h-4 w-4 text-green-500" />;
+      case 'comment_like':
+        return <Heart className="h-4 w-4 text-purple-500" />;
+      case 'mention':
+        return <MessageSquare className="h-4 w-4 text-amber-500" />;
+      default:
+        return <Bell className="h-4 w-4 text-primary" />;
+    }
+  };
+  
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   return (
     <PageTransition>
-      <main className="min-h-screen pb-20 bg-background text-foreground">
-        <div className="max-w-xl mx-auto px-4 pt-6">
-          <h1 className="text-3xl font-bold mb-6">Notificações</h1>
-          
-          <Tabs defaultValue="all">
-            <TabsList className="w-full">
-              <TabsTrigger value="all" className="flex-1">
-                <Bell className="h-4 w-4 mr-2" />
-                Todas
-              </TabsTrigger>
-              <TabsTrigger value="mentions" className="flex-1">
-                <Activity className="h-4 w-4 mr-2" />
-                Menções
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="all" className="mt-4">
-              {notifications.length === 0 ? (
-                <div className="text-center py-10">
-                  <Bell className="h-10 w-10 mx-auto text-muted-foreground opacity-30" />
-                  <p className="mt-4 text-muted-foreground">Nenhuma notificação</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Quando alguém curtir ou comentar em suas publicações, você verá aqui.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {notifications.map((notification, index) => (
-                    <motion.div
-                      key={notification.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={`p-4 rounded-lg border border-border flex gap-3 cursor-pointer hover:bg-accent/50 transition-colors ${
-                        !notification.is_read ? 'bg-primary/5' : ''
-                      }`}
-                      onClick={() => handleNotificationClick(notification)}
-                    >
-                      <div className="flex-shrink-0">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage 
-                            src={notification.from_user.avatar_url || undefined} 
-                            alt={notification.from_user.username} 
-                          />
-                          <AvatarFallback>
-                            {notification.from_user.username ? notification.from_user.username[0].toUpperCase() : 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">
-                            {notification.from_user.full_name || notification.from_user.username}
-                          </span>
-                          {notification.from_user.username.toLowerCase() === 'outliersofc' && (
-                            <Badge variant="outline" className="px-1 bg-primary text-primary-foreground">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Oficial
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        <p className="text-sm mt-1">
-                          {notification.type === 'like' && (
-                            <span className="flex items-center gap-1">
-                              <ThumbsUp className="h-3.5 w-3.5 text-primary" />
-                              curtiu sua publicação
-                            </span>
-                          )}
-                          {notification.type === 'comment' && (
-                            <span className="flex items-center gap-1">
-                              <MessageSquare className="h-3.5 w-3.5 text-primary" />
-                              comentou em sua publicação
-                            </span>
-                          )}
-                        </p>
-                        
-                        {notification.post_content && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                            {notification.post_content}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center mt-2 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {getTimeAgo(notification.created_at)}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="mentions" className="mt-4">
-              <div className="text-center py-10">
-                <Activity className="h-10 w-10 mx-auto text-muted-foreground opacity-30" />
-                <p className="mt-4 text-muted-foreground">Nenhuma menção</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Quando alguém mencionar você nas publicações, você verá aqui.
-                </p>
-              </div>
-            </TabsContent>
-          </Tabs>
+      <div className="container max-w-md mx-auto pb-20 pt-4">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Notificações</h1>
+          {notifications.some(n => !n.read) && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={markAllAsRead}
+              className="text-xs"
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Marcar todas como lidas
+            </Button>
+          )}
         </div>
         
-        <BottomNav />
-      </main>
+        <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="mb-4">
+          <TabsList className="grid grid-cols-3 mb-4">
+            <TabsTrigger value="all">Todas</TabsTrigger>
+            <TabsTrigger value="unread">Não lidas</TabsTrigger>
+            <TabsTrigger value="read">Lidas</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-8">
+            <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">{error}</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchNotifications} 
+              className="mt-4"
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="text-center py-12">
+            <Bell className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">Você não tem notificações {activeTab !== 'all' && `${activeTab === 'unread' ? 'não lidas' : 'lidas'}`}</p>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="space-y-1">
+              {notifications.map((notification) => (
+                <motion.div
+                  key={notification.id}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={`p-3 rounded-lg cursor-pointer ${notification.read ? 'bg-background border border-border' : 'bg-primary/5 border border-primary/20'}`}
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage 
+                        src={notification.actor?.avatar_url || undefined} 
+                        alt={notification.actor?.username || 'Usuário'} 
+                      />
+                      <AvatarFallback>
+                        {notification.actor?.username?.[0]?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <p className="text-sm font-medium">{getNotificationText(notification)}</p>
+                          {!notification.read && (
+                            <Badge variant="default" className="h-2 w-2 rounded-full p-0 bg-primary" />
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(notification.created_at)}
+                        </span>
+                      </div>
+                      {notification.post && (
+                        <p className="text-xs text-muted-foreground line-clamp-1">
+                          {notification.post.content}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </div>
+      <BottomNav />
     </PageTransition>
   );
 };

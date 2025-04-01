@@ -18,15 +18,15 @@ const Profile = lazy(() => import('@/pages/Profile'));
 const Notifications = lazy(() => import('@/pages/Notifications'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
-// Create a client with improved configuration
+// Criar um cliente com configuração melhorada
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 3, // Increased from 2 to 3
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 3, // Aumentado para 3 tentativas
+      staleTime: 1000 * 60 * 5, // 5 minutos
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      gcTime: 1000 * 60 * 30, // 30 minutes (nova propriedade no lugar de cacheTime)
+      gcTime: 1000 * 60 * 30, // 30 minutos (no lugar de cacheTime)
     },
   },
 });
@@ -35,37 +35,37 @@ function App() {
   const [tablesInitialized, setTablesInitialized] = useState(false);
   const [initAttempts, setInitAttempts] = useState(0);
 
-  // Ensure database tables are initialized with retry
+  // Garantir que as tabelas do banco de dados estão inicializadas com retry
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Check connectivity before attempting initialization
+        // Verificar conectividade antes de tentar inicialização
         const { data, error } = await supabase.from('profiles').select('count(*)', { count: 'exact', head: true }).limit(1);
         
         if (error) {
-          console.error('Connectivity check failed:', error);
+          console.error('Falha na verificação de conectividade:', error);
           throw new Error('Sem conexão com o banco de dados');
         }
         
-        // Check and create necessary tables
+        // Verificar e criar tabelas necessárias
         await Promise.all([
           ensureCommentLikesTable(),
           ensureNotificationsTable()
         ]);
         
-        console.log('Supabase tables initialized successfully');
+        console.log('Tabelas do Supabase inicializadas com sucesso');
         setTablesInitialized(true);
       } catch (error: any) {
-        console.error('Error initializing Supabase tables:', error);
+        console.error('Erro ao inicializar tabelas do Supabase:', error);
         
-        // If we've tried less than 3 times, retry after delay
+        // Se tentamos menos de 3 vezes, tente novamente após um atraso
         if (initAttempts < 3) {
-          console.log(`Retrying initialization (attempt ${initAttempts + 1}/3)...`);
+          console.log(`Tentando inicialização novamente (tentativa ${initAttempts + 1}/3)...`);
           setTimeout(() => {
             setInitAttempts(prev => prev + 1);
-          }, 3000); // Wait 3 seconds before retry
+          }, 3000); // Esperar 3 segundos antes de tentar novamente
         } else {
-          // After 3 failed attempts, proceed anyway
+          // Após 3 tentativas falhas, prossiga de qualquer forma
           setTablesInitialized(true);
           toast.error('Problemas de conexão', {
             description: 'Algumas funcionalidades podem não estar disponíveis. Verifique sua conexão com a internet.',
